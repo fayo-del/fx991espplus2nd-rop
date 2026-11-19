@@ -15,7 +15,7 @@ cross-validated against the ROM keycode tables and the community symbol table.
 | Token bytes per key × {base, SHIFT, ALPHA} | **emulator-measured (this work, §6)** — every key typed, bytes dumped at input buffer 0x8154 |
 | STO / double-modifier (SHIFT+ALPHA, ALPHA+SHIFT) | emulator-measured: **all 16 combos insert nothing** |
 | Payload bytes `0E 4D`×50 / v4 draw words | `0E`, `4D`, `01`, `0xF8`, `0x10` — **no typed source** (§2); `54`(M), `81`(e), `35`/`38` (digits) ARE typable. The deployed payload = `data[]`-injected only |
-| Typed full-chain execution | **NOT demonstrated**; pre-patch typed ceiling = 54 tokens at 1×; post-patch the digit-select and post-dance typing work, but LineIO stays boxed and hack-#7 advance is still silent (§9) — so the ≥100-byte trigger remains unreachable typed **in the emulator**; the hardware procedure (`docs/hardware-procedure.md`) exists for the real board |
+| Typed full-chain execution | **NOT demonstrated**; **typed fill reaches strlen=99 in the decoupled state post-patch** (500 typed `'1'`s → `b96-111=BA21B900…`, NUL at index 99) — exactly one byte short of the ≥100 flood gate; trigger at 99 = no flood, `h4d20=0` (§9) |
 | Hack #7 unstable-byte symbol-advance | **WIKI-exact test negative in the emulator even post-patch**: `▶/◀` walks with 2.5M-tick (≈4 s) settles never advance the entered byte (§9); the hardware Sheet-A test arbitrates whether it is flash-cadence or a real firmware difference |
 | Emulator keyboard bridge | **root cause found and patched** (§9): Casio-emu mode never drove the KID matrix post-boot; the (+31-line, 3-file) matrix-drive + report-retention patch restores digit-select, post-dance typing, and handshake re-arm |
 | Everything above on physical hardware | **never run** — emulator-only |
@@ -385,6 +385,29 @@ FID[final]     len=22 …BA21 BA21 B9 35 00
 
 **What is fixed:** post-boot key delivery, SETUP digit-select, and
 post-dance typing at the decoupled cursor.
+
+**The 100-byte-gate hunt on the patched build (`kyb_gate.lua`, exact stdout
+in `/tmp/gate.log` + `/tmp/gate2.log`):**
+- Typed 200/500 `'1'` fills **in the decoupled state**: len climbs linearly
+  (~62% insert rate at 8× clock: `f4 len=10 → f200 len=70 → f340 len=99`).
+  **The pre-patch "54 ceiling" is GONE** — the fills now fill the real
+  99-byte input area: `FID[f340..f500] len=99, b96-111=BA21B900…` (byte 96/97
+  = `BA 21` nonzero, byte 98 = `B9`, byte 99 = `00` = NUL) — **strlen = 99,
+  exactly one byte short of the ≥100 flood gate**; further presses insert
+  nothing (the 99-char editor cap).
+- `◀`/`▶` walks here change no bytes (the freeze).
+- **KeyInject (real-ms, `/tmp/keyseq7.bin` = `5,→,→,→,←,←,→` @120/180ms)**:
+  `FID[after-inject] len=99 in=…3131…` — no byte change, no hack-#7 advance.
+- Trigger `AC ◀ EXE` at strlen=99: no flood, **`h4d20=0`**, buffer clears
+  (`post-flood len=0`), `h3538=4234` = all app-class.
+
+**The gap is exactly one byte**: the editor cap = 99 chars + NUL; the strcpy
+flood needs `strlen ≥ 100` with the 100th byte NONZERO. The community's
+hand path passes this on the real calculator — most plausibly through the
+unstable-character entry, which the emulator's keyboard bridge still does
+not replicate, or a different editor state. **[HW-unknown]**: the CY-845
+unstable-char flash mechanics (`docs/hardware-procedure.md` Sheet B is the
+arbitration step).
 **Remains unfaithful:** (1) LineIO still not engaged — Σ( stays in the boxed
 8-byte form (`69 B8 21 BA 21 BA 21 B9`) across every patched-build attempt;
 the digit-2 lands but the SETUP page-1 selection does not flip the input
