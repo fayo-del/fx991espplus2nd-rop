@@ -1,0 +1,143 @@
+-- V8: reset-race -> mode-68 candidate editor test.
+-- [SHIFT][9][3] [EXE] starts ResetAll (RAM clear); press ON mid-clear
+-- (race) hoping 0x80F9 stays 0x00. Then: dump mode byte, type fill rounds,
+-- measure the typed cap in this state, trigger [AC][<-][EXE], watch.
+dofile("emulator/lua-common.lua")
+io.stdout:setvbuf("no")
+
+local SHIFT, ALPHA, MODE, CALC, EXE, AC, DEL, LEFT, RIGHT, ON =
+	0x07, 0x17, 0x47, 0x06, 0x60, 0x42, 0x32, 0x26, 0x37, 0xFF
+local K1, K2, K3, K9, KX10 = 0x00, 0x10, 0x20, 0x22, 0x62
+local K8, K5 = 0x12, 0x11
+
+local keys, ki = {}, 0
+local state, hold_t, gap_t, cur = "idle", 0, 0, nil
+local phase = "type"
+local no_grow, last_len, max_len = 0, -1, 0
+
+local function blen() for i = 0, 299 do if (data[0x8154 + i] or 0) == 0 then return i end end return 300 end
+local function bdump(lo, n) local s = "" for i = lo, lo + n - 1 do s = s .. string.format("%02X", data[0x8154 + i] or 0) end return s end
+local function push(code, label, hold, gap) keys[#keys + 1] = { code = code, label = label, hold = hold or 16000, gap = gap or 16000 } end
+local function chord(mod, code, label) push(mod, label .. "/mod"); push(code, label) end
+
+push(AC, "wAC", 12000, 20000)
+-- reset menu: SHIFT 9 (menu) 3 (reset all)... then EXE to confirm
+push(SHIFT, "shift9m", 30000, 30000); push(K9, "menu9", 30000, 40000)
+push(K3, "reset3", 30000, 40000)
+push(EXE, "reset-exe", 24000, 40000)   -- confirm reset; clear loop starts
+
+local hit = {}
+local function note(a) hit[a] = (hit[a] or 0) + 1 end
+break_at(0x4D20, function() note("k4d20"); emu:set_paused(false) end)
+break_at(0x3538, function() note("k3538"); emu:set_paused(false) end)
+break_at(0x35BE, function() note("k35be"); emu:set_paused(false) end)
+break_at(0x2B1E, function() note("k2b1e"); emu:set_paused(false) end)
+
+local final_t, fill_done = 0, false
+local race_clock, race_done = -1, false
+local race_on_ticks = { 2000, 6000, 12000, 24000, 48000, 96000 }
+local race_fired = {}
+addposttick(function()
+	if phase == "type" then
+		if race_clock >= 0 and not race_done then
+			race_clock = race_clock + 1
+			for i, t in ipairs(race_on_ticks) do
+				if race_clock == t and not race_fired[i] then
+					race_fired[i] = true
+					Keyboard:PressKey(ON)
+					print("RACE: ON pressed at +" .. t)
+				end
+			end
+			if race_clock > 99000 and race_clock % 1000 == 0 then
+				Keyboard:ReleaseAll()
+			end
+			if race_clock > 120000 then
+				race_done = true
+				Keyboard:ReleaseAll()
+				print(string.format("RACE-DONE: 0x80F9=%02X 0x80FC=%02X 0x80FD=%02X 0x80F5=%02X len=%d",
+					data[0x80F9] or 0, data[0x80FC] or 0, data[0x80FD] or 0, data[0x80F5] or 0, blen()))
+			end
+		end
+		if state == "idle" then
+			local n = blen()
+			if n > max_len then max_len = n end
+			if last_len >= 0 and race_done then
+				if n ~= last_len then no_grow = 0 else no_grow = no_grow + 1 end
+			end
+			last_len = n
+			if race_done and not fill_done and (n >= 100 or no_grow >= 60) then
+				fill_done = true
+				print(string.format("FILL: len=%d maxlen=%d mode=%02X", blen(), max_len, data[0x80F9] or 0))
+				print("FILL: buf " .. bdump(0, 100))
+				push(AC, "TRIG-AC", 16000, 24000); push(LEFT, "TRIG-LEFT", 16000, 20000)
+				push(EXE, "TRIG-EXE", 24000, 30000); push(EXE, "TRIG-EXE2", 24000, 30000)
+			end
+		end
+		if state == "idle" then
+			local n0 = blen()
+			ki = ki + 1
+			if ki > #keys then
+				phase = "watch"; final_t = 0
+				emu:SetClockSpeed(8)
+				print("WATCH: typing exhausted (no trigger)")
+				return
+			end
+			cur = keys[ki]
+			if cur.label == "reset-exe" then
+				-- start the ON race right after reset-exe's press begins
+				if race_clock < 0 then race_clock = 0 end
+			end
+			if cur.pad then state = "idle"  -- consumed as latency only
+			else
+				if cur.mod then Keyboard:PressKey(cur.mod); state = "mod"; hold_t = 6000
+				else Keyboard:PressKey(cur.code); state = "press"; hold_t = cur.hold end
+			end
+		elseif state == "mod" then
+			hold_t = hold_t - 1
+			if hold_t <= 0 then Keyboard:PressKey(cur.code); state = "press"; hold_t = cur.hold end
+		elseif state == "press" then
+			hold_t = hold_t - 1
+			if hold_t <= 0 then Keyboard:ReleaseAll(); state = "rel"; gap_t = cur.gap end
+		elseif state == "rel" then
+			gap_t = gap_t - 1
+			if gap_t <= 0 then
+				state = "idle"
+			end
+		end
+	elseif phase == "watch" then
+		final_t = final_t + 1
+		if final_t % 200000 == 0 then
+			local tiled = 0
+			for a = 0x8240, 0x8DFB do if (data[a] or 0) > 0x30 then tiled = tiled + 1 end end
+			print(string.format("WATCH: t=%d pc=%04X sp=%04X len=%d tiles=%d h={2b1e:%d 3538:%d 35be:%d 4d20:%d}",
+				final_t, cpu.pc, cpu.sp, blen(), tiled,
+				hit.k2b1e or 0, hit.k3538 or 0, hit.k35be or 0, hit.k4d20 or 0))
+		end
+		if final_t >= 1500000 then
+			print(string.format("END: pc=%04X sp=%04X h={2b1e:%d 3538:%d 35be:%d 4d20:%d} maxlen=%d",
+				cpu.pc, cpu.sp, hit.k2b1e or 0, hit.k3538 or 0, hit.k35be or 0, hit.k4d20 or 0, max_len))
+			emu:set_paused(true)
+			phase = "done"
+		end
+	end
+end)
+
+-- after the race settles: pad past the boot logo, then type the head + dance + fill
+for i = 1, 60 do push(AC, "pad" .. i, 16000, 16000) end  -- devoured by boot; keys[ki].pad unused, harmless
+local function head()
+	chord(ALPHA, 0x33, "X1"); chord(ALPHA, CALC, "eq"); chord(SHIFT, 0x56, "Sigma")
+	chord(ALPHA, 0x33, "X2"); chord(SHIFT, 0x33, "comma1"); push(K1, "one")
+	chord(SHIFT, 0x33, "comma2"); push(K1, "one2"); push(KX10, "x10"); push(K9, "nine")
+	push(CALC, "CALC", 16000, 24000); push(EXE, "EXE", 24000, 30000)
+	push(AC, "AC", 16000, 24000); push(LEFT, "LEFT", 16000, 16000)
+	push(DEL, "DEL1"); push(DEL, "DEL2"); push(DEL, "DEL3")
+	push(K2, "two"); push(CALC, "CALC2", 16000, 24000); push(EXE, "EXE2", 24000, 30000)
+	push(LEFT, "LEFT2", 16000, 20000)
+	push(K1, "PROBE1", 16000, 16000)
+	push(AC, "AC-f", 16000, 24000); push(LEFT, "LEFT-f", 16000, 20000)
+	for round = 1, 8 do
+		for i = 1, 12 do push(round % 2 == 1 and K8 or K5, "d" .. round .. "-" .. i) end
+		for i = 1, 4 do chord(SHIFT, 0x56, "s" .. round .. "-" .. i) end
+	end
+end
+head()

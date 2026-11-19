@@ -15,8 +15,9 @@ cross-validated against the ROM keycode tables and the community symbol table.
 | Token bytes per key × {base, SHIFT, ALPHA} | **emulator-measured (this work, §6)** — every key typed, bytes dumped at input buffer 0x8154 |
 | STO / double-modifier (SHIFT+ALPHA, ALPHA+SHIFT) | emulator-measured: **all 16 combos insert nothing** |
 | Payload bytes `0E 4D`×50 / v4 draw words | `0E`, `4D`, `01`, `0xF8`, `0x10` — **no typed source** (§2); `54`(M), `81`(e), `35`/`38` (digits) ARE typable. The deployed payload = `data[]`-injected only |
-| Typed full-chain execution | **NOT demonstrated**; typed byte-ceiling = 54 total tokens at 1× (44-digit absorb); ip3's 91-filler config reproduces at `maxlen=9` (§7) |
-| Hack #7 unstable-byte symbol-advance | **WIKI-exact test negative on CY-845**: advance-typing inserts normally (len 1→41), but `▶/◀` flash walks (1M–2M tick settles) change zero bytes; no error-state tiling without the e2e dance; `0E`/`4D` never appeared (§2b) |
+| Typed full-chain execution | **NOT demonstrated**; pre-patch typed ceiling = 54 tokens at 1×; post-patch the digit-select and post-dance typing work, but LineIO stays boxed and hack-#7 advance is still silent (§9) — so the ≥100-byte trigger remains unreachable typed **in the emulator**; the hardware procedure (`docs/hardware-procedure.md`) exists for the real board |
+| Hack #7 unstable-byte symbol-advance | **WIKI-exact test negative in the emulator even post-patch**: `▶/◀` walks with 2.5M-tick (≈4 s) settles never advance the entered byte (§9); the hardware Sheet-A test arbitrates whether it is flash-cadence or a real firmware difference |
+| Emulator keyboard bridge | **root cause found and patched** (§9): Casio-emu mode never drove the KID matrix post-boot; the (+31-line, 3-file) matrix-drive + report-retention patch restores digit-select, post-dance typing, and handshake re-arm |
 | Everything above on physical hardware | **never run** — emulator-only |
 
 No step in this document has been confirmed on a physical CY-845.
@@ -326,6 +327,76 @@ template-box, the typed `0x3538` sled cannot be combined with any of them.
 **Chain classes**: `h4d20 = 0` in every test; all `@0x3538` hits carry the
 app's own signature (`lr=3322`, sp=8D33-8D5F). **No trigger ties the ≤54-byte
 typed input to any stack-tile copy.**
+
+## 9. Emulator keyboard-fidelity — root cause found, patched, and verified
+
+**Diagnosis chain** (instrumented `0x8E00-0x8E02` handshake + per-tick PC
+histograms, `kyb_menu_diag.lua`; then a bank-0/bank-1 disassembly rebuild from
+`oki-u8-disas.cpp` — heads-up: the shipped `oki-u8-disas.cpp` needs
+`#include <cstdint>` and `-std=c++17`):
+
+```
+READY-WRITE 01 (in=80 out=10)          <- once, at boot, carrying the SHIFT report
+READY-READS 20000/40000/60000          <- ~60k boot-phase polls, then SILENCE forever
+PCMAP menu-idle  { 75C0:6600, 75C2:4400, 35C4:512, ... }   (refresh/render loop)
+PCMAP during-2   { 4B96:59579 + 4B70-4B9A/98xx/7Cxx ~0.6% }  (EXI0 wake, re-park)
+PCMAP after-2    { 4B96:80000 }   INPUTBUF len=0   (digit-2 inert)
+```
+
+- `0x4B96` disassembled = `NOP; NOP; RT` **with `LR=0x4B96`: a
+  3-instruction self-loop, not a key decoder** (corrects the earlier
+  "wait-key(103)" reading; `0x4B70-0x4C00` = I/O config + delay helpers,
+  no `0x8E00` access).
+- **The real post-boot input path = bank-1 direct-matrix polling**, found at
+  file-offset `0x16658+`: `PUSH LR / MOV R1,#3 / LEA 0xF040h / L R0,[EA] /
+  BC EQ / AND R0,#24 (blocks KI3/KI4) / BC NE / ADD R1,#-1 / BC NE(loop)`,
+  i.e. `0xF040` polled ~4× per key with debounce, vectoring through the
+  `0x98xx` key map.
+
+**The patch (emulator `src/Peripheral/Keyboard.cpp`, `PressButton`)** — in
+Casio-emu mode (`real_hardware=0`) a Lua/UI keypress only fed the boot-window
+handshake (`keyboard_in_emu/out_emu` + EXI0), leaving the KID matrix dead.
+Now `PressButton` also drives the matrix:
+
+```cpp
+// (emu-mode branch, after the existing report handling)
+if (button.pressed) { keyboard_out = button.ko_bit; keyboard_out &= 0x3FF; }
+else                { keyboard_out = 0; }
+RecalculateKI();
+```
+
+(`RecalculateKI` already composes active-low `keyboard_in` from
+`keyboard_out` + the pressed button's `ki_bit` and is what the ROM's
+`0xF040` reads consume.) Three rebuild cycles + 5 verification runs
+(`kyb_menu_diag`, `kyb_fidelity`, `/tmp/menudiag*.log`, `FID`-lines below).
+
+**Verified results on the patched build (exact stdout, `kyb_fidelity8.lua`):**
+
+```
+READY-WRITE 01/00 pairs restart            <- handshake re-arms constantly; per-key
+FID[setup-done] len=1 in=32…               <- SETUP digit-2 now INSERTS ('2' = 32)
+    (unpatched: setup menu + '2' = INPUTBUF len=0 in all runs)
+FID[sigma-1]   len=9  in=32 69B8 21BA 21BA 21B9
+FID[after-dance] len=21 …  ext=3269B8583D69B829292C74BA21BA21B9BA21BA21B9…  (cache copy!)
+FID[probe1]    len=21 (21→21: the decoupled no-insert state visible)
+FID[sym5]      len=21→22 …B9 35           <- post-dance typing LANDS ('5' = 0x35)
+FID[final]     len=22 …BA21 BA21 B9 35 00
+```
+
+**What is fixed:** post-boot key delivery, SETUP digit-select, and
+post-dance typing at the decoupled cursor.
+**Remains unfaithful:** (1) LineIO still not engaged — Σ( stays in the boxed
+8-byte form (`69 B8 21 BA 21 BA 21 B9`) across every patched-build attempt;
+the digit-2 lands but the SETUP page-1 selection does not flip the input
+mode — likely a second SETUP-menu quirk on CY-845 (per Session 11/12 the
+menu digit-select was flatly inert pre-patch; the operator's hardware
+behaviour should arbitrate what the LCD page ordering is); (2) the hack-#7
+flash-advance: with `▶`/`◀` walks bracketed by 2.5M-tick (≈4 s at 8×)
+settle-waits, the entered `35` byte never advances (`goR1/R2/L1/R3`
+samples byte-identical) — the flash rewrite path is still not exercised by
+this keyboard bridge, or CY-845's flash cadence is genuinely different.
+**[HW-unknown]** which of those two it is; the hardware test (Sheet A of
+`docs/hardware-procedure.md`) arbitrates.
 
 ## 8. Sources / discrepancies vs the original brief
 
