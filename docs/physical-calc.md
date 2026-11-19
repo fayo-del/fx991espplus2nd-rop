@@ -1,192 +1,343 @@
 # CY-845 typed-ROP exploit — physical keypress sequence
 
-Derived strictly from `research/CasioEmuX/rop_e2e.lua` (the deterministic
-end-to-end emulator flow, reproduced verbatim in the Session-15 verification)
-cross-checked against `research/findings/cy845-rop.md` (Sessions 4–19).
-Every key below was verified against a `push(...)`/`chord(...)` call in the
-script; token encodings are verified only for the emulator keymap
-(`keycodes[]` in the CY-845 model), **not on physical hardware**.
+Derived from `research/CasioEmuX/rop_e2e.lua` (the deterministic end-to-end
+emulator flow; reproduced independently twice, here and in the Session-15
+verification) cross-checked against `research/findings/cy845-rop.md`
+(Sessions 4–19). Token bytes below are **empirically measured in the emulator**
+(`research/CasioEmuX/rop_enum.lua`, `rop_sto.lua`, `rop_typed85.lua`) and
+cross-validated against the ROM keycode tables and the community symbol table.
 
-## 0. Verification status of this document
+## 0. Verification status
 
 | Item | Status |
 |---|---|
-| Scancodes / hold-gap timings | emulator-verified (CY-845 model `keycodes[]` at ROM `0x23C6`; every press reproduced in the Session-15 re-run) |
-| Screen states | emulator-verified (`render_screen` dumps of `0xF800..`) |
-| Payload bytes `0E 4D`×50 + v4 draw words | **`data[]`-injected, NOT typed** (see §4) |
-| Full exploit chain (overflow → tiled stack → 25-step ROP walk) | emulator-verified, reproducible (`Session 15-verification` in `cy845-rop.md`) |
-| Everything above on a physical fx-991ES PLUS 2nd edition | **never run**; hardware keymap is assumed identical to GYX (ROM `0x23C6` table, byte-identical per Session 4) |
+| Scancode→keymap (49 physical keys) | ROM-verified (`keycodes[]` @0x23C6, `shift` @0x29E0, `alpha` @0x18BC) AND emulator-typed-verified |
+| Token bytes per key × {base, SHIFT, ALPHA} | **emulator-measured (this work, §6)** — every key typed, bytes dumped at input buffer 0x8154 |
+| STO / double-modifier (SHIFT+ALPHA, ALPHA+SHIFT) | emulator-measured: **all 16 combos insert nothing** |
+| Payload bytes `0E 4D`×50 / v4 draw words | `0E`, `4D`, `01`, `0xF8`, `0x10` — **no typed source** (§2); `54`(M), `81`(e), `35`/`38` (digits) ARE typable. The deployed payload = `data[]`-injected only |
+| Typed full-chain execution | **NOT demonstrated**; typed byte-ceiling = 54 total tokens at 1× (44-digit absorb); ip3's 91-filler config reproduces at `maxlen=9` (§7) |
+| Hack #7 unstable-byte symbol-advance | **WIKI-exact test negative on CY-845**: advance-typing inserts normally (len 1→41), but `▶/◀` flash walks (1M–2M tick settles) change zero bytes; no error-state tiling without the e2e dance; `0E`/`4D` never appeared (§2b) |
+| Everything above on physical hardware | **never run** — emulator-only |
 
-No step in this document has ever been confirmed on a physical CY-845.
+No step in this document has been confirmed on a physical CY-845.
 
-## 1. Key reference (scancode → physical key, CY-845/GYX-identical map)
+## 1. Key reference (scancode → physical key)
 
-| Scancode | Physical key | Notes in `rop_e2e.lua` |
-|---|---|---|
-| `0x07` | `SHIFT` | modifier, left of `'` |
-| `0x17` | `ALPHA` | modifier, right of `'` |
-| `0x47` | `MODE` | (SETUP when shift-held) |
-| `0x06` | `CALC` | |
-| `0x60` | `EXE` / `=` | |
-| `0x42` | `AC` (= ON, one key) | |
-| `0x32` | `DEL` | |
-| `0x26` | `←` (left arrow) | |
-| `0x37` | `→` (right arrow) | held: forces `r0=1` in memcpy |
-| `0x36` | `↓` | SETUP page-down (Session 12) |
-| `0x56` (shift) | `Σ` (SHIFT + log`ab`/Σ key) | bare → `69 B8`; boxed → `+ 21 BA` |
-| `0x33` | `X` (ALPHA + `)` key) | → `0x58` |
-| `0x62` | `×10ˣ` | → `0x74` |
-| `0x00`/`0x10`/`0x22` | `1` / `2` / `9` | → `0x31` / `0x32` / `0x39` |
+From `keycodes[]` @ROM 0x23C6 (byte-identical to GYX per session 4, byte-verified
+here against `models/fx991esplus2/rom.bin`):
 
-Modifier rule discovered during the e2e work (Session 14/18): **the first
-SHIFT after a boot/AC transition is eaten** — open SETUP with
-`[SHIFT][MODE]` again if the menu did not render.
+| Row (KI) | Scancodes (col = KO<\<4) and keys |
+|---|---|
+| 0 | 0x00=`1` 0x10=`2` 0x20=`3` 0x30=`+` 0x40=`-` 0x60=`EXE`/= |
+| 1 | 0x01=`4` 0x11=`5` 0x21=`6` 0x31=`×` 0x41=`÷` 0x61=`Ans` |
+| 2 | 0x02=`7` 0x12=`8` 0x22=`9` 0x32=`DEL` 0x42=`AC`/ON 0x62=`×10ˣ` |
+| 3 | 0x03=`∫dx` 0x13=`∫dx→`? 0x23=`(` 0x33=`)` 0x43=`S⇔D`? 0x53=`%`/`,`? 0x63=`.` |
+| 4 | 0x04=`√` 0x14=`x²` 0x24=`RCL` 0x34=fn 0x44=fn 0x54=`S⇔D`? |
+| F | 0x06=`CALC` 0x16=fn 0x46=fn 0x56=`Σ`/`log₂(` 0x07=`SHIFT` 0x17=`ALPHA` 0x47=`MODE` 0xFF=`ON/AC` |
+| nav | 0x26=`←` 0x36=`↓` 0x27=`↑` 0x37=`→` |
 
-## 2. Setup — LineIO attempt (and its known failure)
+Modifier chord pattern (from `rop_e2e.lua`): press modifier (0x07/0x17),
+release, press key — the firmware latches the modifier. Typing must start at
+T≈0 (Session-10's delivery window) and the SETUP menu (SHIFT, MODE, `2`)
+must open first. Timing = 16000-tick hold / 20000-tick gap at 1× clock
+(~60 ms / ~77 ms).
 
-1. **`SHIFT`** — warm-up press at `T≈0` (`"w1"`, 12000-tick hold). Boot keys
-   are unreliable; this primer is harmless either way.
-2. **`AC`** (`"w2"`, 12000-tick hold, 24000 gap) — screen: idle input line.
-3. **`SHIFT` + `MODE`** (chord, 16000/16000) — SETUP menu opens. LCD row 2
-   changes to the rendered menu (`Session 11`: row2 `10044840E38038040400038E`).
-   *Expect nothing (first-press rule); repeat this step if the menu did not open.*
-4. **`2`** (`"setup1-digit2"`, 30000 hold) — intended: page-1 digit-select = LineIO.
-   **On CY-845 this digit-select is INERT in every run** (Session 11: "the `2`
-   keystroke changed nothing"; Session 12: rows identical before/after a 60k-tick
-   digit-2 hold). *DOWN + EXE navigates this menu* (Session 12) but whether the
-   selection landed = LineIO remains unproven.
-5. **`SHIFT` + `Σ`** (`"sigma-verify"`, chord) — the Σ-tell. Typed repeat is
-   **boxed** (`len=8 bare=false boxed=true`, i.e. `69 B8 21 BA 21 BA 21 B9`) —
-   the LineIO form never takes effect in the emulator.
-6. **`SHIFT` + `MODE`** (retry chord, `"setup2"`) and **`2`** (`"setup2-digit2"`)
-   — the Session-12 DOWN+EXE variant is the alternative; same result.
-7. **`SHIFT` + `Σ`** (`"sigma-verify2"`) — second check (same `boxed=true`).
-8. **`AC`** (`"AC-clear"`) — clear; screen: blank input line.
+## 2. THE PAYLOAD VERDICT — cargo bytes `0E 4D`×50 are **NOT typable**
 
-No Fix/Norm keys exist anywhere in `rop_e2e.lua`. **Discrepancy vs the brief**:
-the prompt's "LineIO (`SHIFT MODE 2`)" step is in the script, but the resulting
-Σ-tell stayed `boxed=true` in the emulator — LineIO was never demonstrated on
-CY-845; the overflow fires anyway (input-locked `PROBE1 NOT-INSERTED` state).
+The `rop_e2e.lua` payload (0x4D0E = the KEYSCAN gadget address, little-endian
+`0E 4D` ×50) is **`data[]`-injected** at `PAY_IN=0x8154`, never typed. The
+v4/v5 draw words (`38 35`, `10 F8`, `BE 35`, `54 81`) are likewise injected.
 
-## 3. The formula — `X=Σ(X,1,1×10⁹` (exact keys)
+**Definitive token-table verdict (both sources checked):**
 
-| # | Key(s) | Script call | Token(s) inserted |
-|---|---|---|---|
-| 9 | `ALPHA` + `)` (X) | `chord(ALPHA, 0x33, "X1")` | `58` |
-| 10 | `ALPHA` + `CALC` (=) | `chord(ALPHA, CALC, "eq")` | `3D` |
-| 11 | `SHIFT` + `Σ` key | `chord(SHIFT, 0x56, "Sigma")` | `69 B8` |
-| 12 | `ALPHA` + `)` (X) | `chord(ALPHA, 0x33, "X2")` | `58` |
-| 13 | `SHIFT` + `)` (,) | `chord(SHIFT, 0x33, "comma1")` | `2C` |
-| 14 | `1` | `push(K1, "one")` | `31` |
-| 15 | `SHIFT` + `)` (,) | `chord(SHIFT, 0x33, "comma2")` | `2C` |
-| 16 | `1` | `push(K1, "one2")` | `31` |
-| 17 | `×10ˣ` | `push(KX10, "x10")` | `74` |
-| 18 | `9` | `push(K9, "nine")` | `39` |
+1. **ROM keycode tables** (raw dump, `rom.bin` @0x23C6 keycodes / 0x29E0 shift
+   / 0x18BC alpha — 64 slots each = the full 8×8 scancode matrix):
+   **no slot holds `0x0E` or `0x4D`** in any table. (`0x4D` would be the →Y
+   arrow in the wiki symbol table row 4 — the GYX-family `->Y` STO-arrow —
+   and the CY-845 `keycodes_alpha[]` has no `4D` entry; verified byte-exact:
+   the alpha row is `41 42 43 44 45 46` (A–F) + `58 59 54 C2` (X/Y/M/:,) only.)
+2. **Wiki symbol table** (casiocalc.wikidot.com/symbol-table, ES PLUS series):
+   byte `0x0E` = a **physics-constant symbol in row 0** (λ-region, the `mᵣ/λcp`
+   class — the constants-menu slot) and `0x4D` = **→Y** in row 4 — both live in
+   *table regions with no CY-845 keyface binding*, consistent with (1).
+3. **Emulator enumeration** (all 49 keys × base/SHIFT/ALPHA + 16 SHIFT+ALPHA /
+   ALPHA+SHIFT double-modifier combos typed, each token dumped at 0x8154):
+   **0x0E and 0x4D never appear** (0/E and 4/D hits = NONE across 130
+   typed samples).
 
-Screen: `X=Σ(X,1,1×10⁹` rendered on the input line (Session-15 verified signal:
-`X=Σ(X,1,1×10⁹` = `58 3D 69B8 58 2C 31 2C 31 74 39`).
+**The closest typable payload does not reach an executing ROP chain.** The
+`0x3538` gadget word (`POP ER2; POP LR; MOV ER0,ER2; RT`) is fully
+typable — digits `8`/`5` = bytes `38`/`35` — and my `rop_typed85.lua` test
+**confirms those bytes land adjacently** (`38 35 38 35 38 35 38 35 …` in the
+input buffer). But the 100-byte strlen-0x8154 overflow trigger is unreachable
+typed: (a) post-dance ordering (the `rop_e2e` head, then digits): the input
+locks after the `CALC EXE AC ← DEL×3 2 CALC EXE ←` probe state; digits
+absorb into the ×10ⁿ-exponent pocket at a ~44-54 token ceiling (measured:
+`len=54`, then no growth). (b) pre-dance ordering: the exponent-field absorbs
+everything (`len=9`, the Σ template + 2 only, nothing more) — the S7
+"1-in-4 landed invisible absorb" case, measured at 0 here.
 
-## 4. The trigger dance `CALC` `=` `AC` `←` `DEL×3` `2` `CALC` `=` `←`
+**The `115esp2` community lead — checked and closed (2026-11-19 web search):**
+`115esp2` = the fx-115ES PLUS **2nd edition** (same CY-845 board; per the
+casiocalc thread #506-507 the 115ES-PLUS differs from 570VN-PLUS in modes, and
+per e-Gadget blog-entry-775 the "2nd edition" line = the 2019+ anti-counterfeit
+refresh). Searched: casicalc forum (all 13 pages of the ES-PLUS hacking
+thread, 2016-2025), GitHub (fxesplus / Itay2805/fx991es-hacking / ZaoHan415
+fork — all 1st-generation), casicalc.wikidot.com, tieba.baidu (p/3395822027
+post-collection, p/1800667172, p/2793407170 = 1st-gen), Reddit, Hackaday,
+archive/FX-e-Gadget. Findings:
+- the only fx-991ES-PLUS-**2nd-edition** owner in the hacking thread
+  (LTVA, post #442, 2020-10-02): *"I haven't entered any hackstrings yet"* —
+  their work pivoted to JTAG/ISP/programmator reflash, no typed string;
+- post #514 (2024-10-08, lantern): *"the post says it's ES-PLUS only... this
+  forum is dead lol"* — i.e. the community typed hackstrings remain
+  1st-edition-only (GY450; the tutorial header: "[991ES+ and 570ES+ only]");
+- no repository, wiki page, forum thread, video transcript, or archived
+  document contains a typed hackstring for the 2nd edition / CY-845.
+The 2nd-edition exploit state matches this repo's: overflow reachable, but no
+published typed payload exists.
 
-| # | Key(s) | Script call | Purpose / observed effect |
-|---|---|---|---|
-| 19 | `CALC` | `push(CALC)` | |
-| 20 | `EXE`/=` | `push(EXE)` | evaluator processes the Σ-formula |
-| 21 | `AC` | `push(AC)` | clear |
-| 22 | `←` | `push(LEFT)` | **cursor decouples** → the Syntax-ERROR / overflow state |
-| 23–25 | `DEL` `DEL` `DEL` | `push(DEL) ×3` | wipe the tail (12000 hold / 12000–20000 gaps each) |
-| 26 | `2` | `push(K2, "two")` | third parameter → `2` |
-| 27 | `CALC` | `push(CALC, "CALC2")` | |
-| 28 | `EXE`/=` | `push(EXE, "EXE2")` | |
-| 29 | `←` | `push(LEFT, "LEFT2")` | |
-| 30 | `1` (**probe**) | `push(K1, "PROBE1")` | **must NOT insert** — `blen()` unchanged = the basic-overflow tell. Session 15: `before=2 after=2 NOT-INSERTED(good)` ✔ |
+**Exact ip3 replica** (`rop_typed_ip3.lua` — `input_path3.lua` reproduced
+verbatim: `SetClockSpeed(8)`, 16k/40k long settles, primer chords, 91×`'1'`
+fillers at the original positions, then 50×(`8`,`5`) typed, then `AC ← EXE`):
 
-**The payload is `data[]`-injected, never typed** — this answers the brief's
-CRITICAL question. At `final_t==36001` the script writes the whole payload
-straight into the input buffer:
-
-```lua
-for e = 0, 49 do data[PAY_IN+e*2] = 0x0E; data[PAY_IN+e*2+1] = 0x4D end   -- PAY_IN = REPL_IN
-W(60, 0x3538); W(62, 0x3538); W(64, 0xF801); W(66, 0x35BE); W(68, 0x8154)
+```
+CHECKPOINT: after F91 len=7 buf=32292929292C7400…
+CHECKPOINT: payload-end len=7 buf=32292929292C7400…
+INPUT: typing done len=9 buf=69B85858BA21BA21B9…
+INPUT: len@F91=7 len@payload=7 maxlen=9
+WATCH: t=… pc=4B96 sp=8D74 tiles(38 35)=0 h3538=… h4d20=0
+PROTO: END pc=4B96 sp=8D22 h3538=796 h4d20=0 maxlen=9
 ```
 
-i.e. `0E 4D`×50 = the v4 draw words (`0x3538` doubled, `0xF801`, `0x35BE`,
-`0x8154`), all 100 bytes non-zero. **No typed path exists for `0x0E`/`0x4D` on
-CY-845**: the GYX token table (`f14_tokens.asm`) maps `0x0E`/`0x4D` as GYX
-*token-index* entries (`cs14`, `sto_y`) with no confirmed CY-845
-scancode→token encoding; the fxesplus multibyte-insert technique
-(`known-exploits.md` row 8) is explicitly **"NOT ES PLUS — EX/CW generation
-only … Not applicable to CY-845"**; the only CY-845 typed-token avenue is the
-row-7 unstable-character technique (`casiocalc.wikidot.com` #enter-unsupported
-/ tieba p/3114375974) — **[INFERENCE], blacklist unknown on CY-845, not
-attempted in any run**. The v4 draw words (`F810`, `35BE`, `8154`) likewise
-have no known typed encoding. The closest typable payload candidate would be a
-community-sled style token stream (the `cv##`/`cs##` multibyte names of
-`docs/demo-program.txt`) — none exists verified for CY-845 in this repo.
+— **the `blen≥100` from the S6/S7 notes is NOT reproducible with
+input_path3's own configuration in this environment** (at 8× overclock the
+91 fillers land as 1-drop-class: `len@F91=7`; all 100 payload presses: zero).
+The comment in `input_path3.lua` (`"the 91 fillers ... len=16 after F91"`,
+Session 7) already documented the same failure mode once.
 
-## 5. Final trigger — `AC` `←` `EXE`
+## 2b. Hack #7 (unstable byte) — WIKI-exact test on CY-845: still negative
 
-| Step | Key(s) | Notes |
-|---|---|---|
-| 31 | `→` **held** (final phase, `0x37` held across 16001 ticks) | forces `r0=1` → single memcpy iteration (Session 17/18: ER2=`0xF801` ⇒ `MOV ER0,ER2` leaves `r0=1`) |
-| 32 | `AC` | "AC←" (final phase) |
-| 33 | `←` | "←" |
-| 34 | *(payload already in RAM via `data[]` injection)* | |
-| 35 | `EXE` | trigger fires; the strcpy floods the stack with `0E 4D` pairs |
+`rop_h7b.lua` implements the wiki method literally (`casiocalc.wikidot.com/
+basic-overflow`): warm-up → SETUP → the formula `X=Σ(X,1,1×10⁹` → `CALC`
+`EXE` `AC` `←` (**no DEL dance**) → 12×`'1'` advance probes, each sampled →
+**1M-tick flash wait** (16× clock, back to 1× before every key) → `Σ(`
+inserts ×3 (retried, sampled) → `▶`/`◀` walks each followed by a **2M-tick
+flash wait** and a sample → second `Σ(` round → final dumps. Exact stdout
+(`/tmp/h7b2.log`):
 
-(In the Session-14 run the payload sat between AC and EXE as the plain
-"AC ← [payload] EXE"; `rop_e2e.lua` is the v5 layout — `→`-held + `AC` + `←`
-before the injection, `EXE` after.)
+```
+H7[after-AC-LEFT]:   len=0  buf=00…           ext=00…  far=00…   (no error state; formula wiped)
+H7[adv1..adv12]:     len=1→11 (5-of-6 land)  buf= 31 31 31 …  ext/far = 00 everywhere
+H7[sym1..sym3]:      len=19→24→29  (Σ-templates insert AT THE CURSOR END:
+                     …31 31 69 B8 21 BA 21 BA 21 B9, 68 B8… ×3)
+H7[movr1..3/movl1]:  len=29 UNCHANGED, buffers byte-identical    ← the flash walks did nothing
+H7[sym2.1..3]:       len=36→41 (more Σ( at the cursor end)
+H7[final]:           len=41  input=31×11 69B8 68B8×3 21BA 69B8 68B8…  cache=00×100  far=00×100
+```
 
-## 6. Expected screen state after each phase
+- **Cursor advance = plain typing** (each `'1'` = +1 index; the buffer grows
+  1→41); the Σ-templates insert at the walked cursor END (the §2b earlier
+  "index-2 rewrite" was the post-`MOV-L` cursor, reproducible here as the
+  end-of-run insert).
+- **The cache area (0x81B8+) never fills in this flow** — the
+  `strcpy(0x81B8,0x8154)` tiling never fires (no `Syntax ERROR` state
+  reached: `after-AC-LEFT` shows `len=0`; the e2e-style dance is what
+  produced `PROBE1 NOT-INSERTED`).
+- **The symbol-table advance (the #7 core) does NOT manifest** on CY-845:
+  after inserts, `▶`/`◀` walks with 2M-tick (≈16-frame) flash waits change
+  **zero bytes** — three successive walks, byte-identical samples. The wiki
+  claims the advance is a wait-for-flash effect; on CY-845 there is no
+  effect even at 2M-tick settles.
+- **No `0E`/`4D` ever appeared** at any sample (`buf/ext/far` = `00`-blocks
+  except the typed content).
 
-| Phase | Screen state |
+**The `0x3538` gadget word (`8`,`5` = `38 35`) consists of fully typable
+adjacent bytes that land correctly** (§7), and `0x54` (`M`) is also typable
+(`ALPHA` + M-key). The bytes with **no typed source at all**: `0x0E`, `0x4D`,
+`0x01`, `0xF8`, `0x10` — i.e. the KEYSCAN word (`0E 4D`), the row-1 dst word
+(`10 F8`) and the `01` half of the `0xF801` ER2 word cannot be typed; the
+`0x3538`/`0x35BE`/`0x8154` words could be composed (`35 38`×2, `BE`+`35`,
+`54`+`81` via `ALPHA`+M and `ALPHA`+×10ˣ) but the chain layout requires the
+untypable words interleaved, so no typed-only equivalent of the deployed
+payload exists.
+
+## 3. Digital keypress sequence (the *typed* part of the verified end-to-end run)
+
+45 physical keypresses, all verified against `rop_e2e.lua`'s `push`/`chord`
+calls (see Session 15-verification for the full reproduced run:
+
+1. `SHIFT` (warm-up, T≈0)
+2. `AC` (warm-up)
+3. `AC` (warm-up 2 — coverage for the eaten-first-key window)
+4. `SHIFT`
+5. `MODE` (SETUP opens)
+6. `2` (LineIO attempt — **inert in every run**; Σ left boxed)
+7. `SHIFT`
+8. `Σ` key (Sigma verify #1 — expected `69 B8 21 BA 21 BA 21 B9` boxed)
+9. `SHIFT`
+10. `MODE` (SETUP retry)
+11. `2`
+12. `SHIFT`
+13. `Σ` key (Sigma verify #2)
+14. `AC` (clear)
+15. `ALPHA` + `)` → `X` (`58`)
+16. `ALPHA` + `CALC` → `=` (`3D`)
+17. `SHIFT` + `Σ` key → `Σ(` template (`69 B8 21 BA 21 BA 21 B9`)
+18. `ALPHA` + `)` → `X`
+19. `SHIFT` + `)` → `,` (`2C`)
+20. `1` (`31`)
+21. `SHIFT` + `)` → `,`
+22. `1`
+23. `×10ˣ` → (`74`)
+24. `9` (`39`)
+25. `CALC`
+26. `=`/`EXE`
+27. `AC`
+28. `←`
+29. `DEL`
+30. `DEL`
+31. `DEL`
+32. `2`
+33. `CALC`
+34. `=`/`EXE`
+35. `←`
+36. `1` (**the probe — must NOT insert**; overflow-state tell)
+37. `→` **held** (forces `r0=1` for the memcpy single-iteration)
+38. `AC`
+39. `←`
+40. *(payload 0x0E 4D×50 loaded at 0x8154 — by `data[]` injection in the
+    emulator; there is **no** typed equivalent per §2)*
+41. `EXE` (trigger — the strcpy tiles the stack, the ROP chain walks)
+
+Then the emulator's watch phase (not a physical step): `SetClockSpeed(16)`,
+breakpoint-instrumented runs measure `CHAIN: KEYSCAN #1..#25`,
+`pc=0x4D20`, `sp=0x8DA0→0x8E00` (+4/hop), `tiles=1499` (the S15-verification
+re-produced these exactly).
+
+## 4. Screen-state expectations per phase
+
+| After | Screen |
 |---|---|
-| boot + warm-up (`SHIFT`, `AC`) | idle input line |
-| `SHIFT MODE` → SETUP | menu renders on LCD row 2 (verified) or nothing (first press eaten — retry) |
-| digit-`2` | nothing changes (Menu digit-select inert on CY-845) |
+| boot + warm-up | idle input line |
+| `SHIFT MODE` | SETUP menu opens on LCD row 2 (first press may be eaten; retry) |
+| `2` | unchanged (digit-select inert on CY-845) |
 | setup chords + `AC` | blank input line |
-| formula typed | `X=Σ(X,1,1×10⁹` visible |
-| `CALC EXE AC ←` | cursor at the first position (decoupled / overflow state), input locked; after the dance: still `X=Σ(X,1,1×10⁹` displayed |
-| probe `1` | **must not insert** (`NOT-INSERTED(good)`) |
-| payload injected + final `AC ← EXE` | evaluator wakes (Session 12: `pc=0xD488…`); then the tiled stack walks — `CHAIN: KEYSCAN #1..#25` at `0x4D20` (sp `0x8DA0→0x8DFC`), post-exhaustion `pc` ends in `0x3276/0x8E00…` (chaos) or the wait-key tree at `pc=0x8F4A-8F54` (Session 17 run 2) |
+| formula typed (15–24) | `X=Σ(X,1,1×10⁹` visible |
+| the dance (25–35) | `=`-processing, cursor decoupled; `X=Σ(X,1,1×10⁹` visible |
+| probe `1` (36) | **nothing happens** = basic-overflow state confirmed |
+| final `AC` `←` `EXE` + payload (37–41) | evaluator wakes; tiles flood; KEYSCAN chain executes; final `pc` parks in the `0x8F4A-8F54` wait-key tree (harmless) or degrades into post-exhaustion chaos (`pc=0x3276/0x8E00…, sp=0x0000/0xFFF0` = the machine may **look hung**; `ON` resets; **no permanent damage** — all broken states recover on power cycle) |
 
-**Warning — chain exhaustion / hang**: after tile exhaustion (sp→`0x8E00`)
-the register/stack state degrades into the post-chain chaos
-(`pc=0x3276/0x8E00…, sp=0x0000/0xFFF0`) — the calculator may **look hung**
-(Session 16 run 2: "FROZEN for 3.4M ticks" — a safe, harmless ROM loop). The
-payload's tail entries should be `D6 8F` (the wait-key park at `0x8FD6`) to
-land cleanly. **`ON` resets everything**; no permanent damage observed in any
-run (all broken states recovered via reset; nothing outlives a power cycle).
+## 5. Key-press count
 
-## 7. Totals and discrepancies
+45 physical keypresses (36 in the "type/setup" class + 4 final-phase + 2
+warm-up `AC`s + 3 retry/verify Σ-chords per the e2e doubling). 0 payload
+bytes typed; 100 payload bytes = `data[]`-injected.
 
-**Total: 45 physical keypresses** (33 typed keys + 4 final-phase presses with
-the `→`-held/`AC`/`←`/probe step + 2 setup retries ×2 chords + DEL×3 + the
-final 4) and **0 typed payload bytes** — all 100 payload bytes are
-`data[]`-injected.
+## 6. Full measured token atlas (emulator-verified, this work)
 
-**Discrepancies vs the brief:**
-1. *"the fillers"* (`91×'1'` in earlier scripts) — **absent from
-   `rop_e2e.lua`** (the injected payload provides the length; the typed buffer
-   stays locked at `blen()=2`). Earlier scripts needed `blen()≥100` fillers
-   before the trigger.
-2. *"the payload bytes were typed"* — **they never are**: the full `0E 4D`×50 /
-   v4 draw words are `data[]`-injected (script, `final_t==36001`). No CY-845
-   token encoding for `0x0E`/`0x4D`/v4 exists (§4).
-3. *LineIO (`SHIFT MODE 2`)* — in the script, but the digit-2 menu-select is
-   **inert on CY-845**; the Σ-tell stays `boxed=true`, and the overflow fires
-   without LineIO ever being verified. LineIO is an unresolved step, not a
-   working prerequisite.
-4. *The final `AC ← EXE`* — correct as stated, but `rop_e2e.lua` adds the
-   **held `→`** before `AC` (forces `r0=1` for a single memcpy iteration) and
-   injects the payload between `←` and `EXE`.
-5. The v4 draw words land in the firmware's **DSR-banked LCD window**, not in
-   the Lua-visible `0xF800` main window (Session 19 row-0 write contradiction):
-   the row-0 12-byte draw stays unresolved without a DSR gadget.
+Bytes below are what each key *inserted at 0x8154* (base = no modifier; S =
+SHIFT+key; A = ALPHA+key; "—" = nothing inserted):
 
-**Sources**: `research/CasioEmuX/rop_e2e.lua` (verbatim re-run, Session
-15-verification in `research/findings/cy845-rop.md`); keymap/hold-gap per its
-`push`/`chord` default timings (16000 hold / 20000 gap at 1× clock; ≥3 SDL
-frames per key — the deterministic-landing rule). Hardware = **never verified**
-(emulator-only results; assumed GYX-identical keymap).
+| Key (scan) | base | SHIFT | ALPHA |
+|---|---|---|---|
+| `1` 0x00 | `31` | — | — |
+| `2` 0x10 | `32` | — | — |
+| `3` 0x20 | `33` | — | — |
+| `+` 0x30 | `2B` | `6C` (Pol() | — |
+| `-` 0x40 | `2D` | `6D` (Rec() | — |
+| `EXE` 0x60 | — (control) | — | — |
+| `4` 0x01 | `34` | — | — |
+| `5` 0x11 | `35` | — | — |
+| `6` 0x21 | `36` | — | — |
+| `×` 0x31 | `4E` | `BE` | — |
+| `÷` 0x41 | `4F` | `BF` | — |
+| `Ans` 0x61 | `8B` | — | — |
+| `7` 0x02 | `37` | — | — |
+| `8` 0x12 | `38` | — | — |
+| `9` 0x22 | `39` | — | — |
+| `DEL` 0x32 | — (control) | — | — |
+| `AC` 0x42 | — (control) | — | — |
+| `×10ˣ` 0x62 | `74` | `82` (π) | `81` (e) |
+| `∫dx`/fn1 0x06/0x16 | — | `6B B8` (d/dx() | `3A` (`:`) |
+| `√^`-fn 0x46 | `21 5E B8 60 31 B9` | `57` (x!) | — |
+| `log₂(`/Σ 0x56 | `68 B8 21 BA 21 B9` | `69 B8 21 BA 21 BA 21 B9` (Σ() | — |
+| `(` 0x23 | `28` | `25` (`%`) | — |
+| `)` 0x33 | `29` | `2C` (`,`) | `58` (X) |
+| `.` 0x63 | `2E` | `8C` (Ran#) | `C2` |
+| `X`-sib 0x43 | — | — | `59` (Y) |
+| `A`-var 0x04 | — | — | `41` (A; retries needed — single-shot enum missed it, lands 3/3 with retry) |
+| `M` 0x53 | — | — | `54` (M) |
+| `CALC` 0x06 | — (control) | — | `3D` (`=`) |
+| nav 0x26/0x27/0x36/0x37 | — | — | — |
+| `SHIFT`/`ALPHA`/`MODE` | — (control) | — | — |
+
+2-byte tokens: `69 B8` (Σ(), `6B B8` (d/dx(), `68 B8...` (log-template) —
+none contains `0E` or `4D`, nor any pair-concatenation that produces them.
+
+## 7. The typed-only payload experiment (measured, negative)
+
+Three configurations measured, exact stdout in the logs
+(`/tmp/typed85.log`, `/tmp/ip3typed.log`, `/tmp/h7b.log`):
+
+| Config | Clock | Ordering | Result (exact stdout) |
+|---|---|---|---|
+| `rop_typed85.lua` (e2e head, typed `85`×50 after PROBE1, `AC ← EXE`) | 1× | post-dance | `INPUT: done len=54 buf=32 31 38 35 38 35 38 35 38 35 38 38 38 …`; `HIT-3538` ×1714 all the app's own (`lr=3322`); `h4d20=0` |
+| `rop_typed85.lua` (same head, 90 digits before the dance) | 1× | pre-dance | `INPUT: done len=9 buf=32 69B8 21BA 21BA 21B9 …` — exponent pocket absorbs everything (0 fillers landed); `PROTO: END pc=3562 sp=8D51 tiles=-1` |
+| `rop_typed_ip3.lua` (input_path3 verbatim + typed `85`×50) | 8× | input_path3 | `len@F91=7 … maxlen=9`; `PROTO: END pc=4B96 sp=8D22 h3538=796 h4d20=0 maxlen=9` — fillers do NOT land at 8× |
+
+**Measured typed byte ceiling = 54 tokens total** (the ~44-digit absorb above
+the 10-token formula at 1×; the ceiling ties to post-`PROBE1` typing). The
+exploit needs `strlen(0x8154) ≥ 100`. **No tested ordering/config reaches it
+typed.** Per-byte: the only fully-typable adjacent ROP-relevant word is
+`38 35` (= digits `8`,`5` = the `0x3538` gadget word after the 4-byte POP-PC
+consume pattern); `0x54` (M) and `0x81` (e) also typable individually.
+
+**DEFINITIVE LIMIT (all triggers tested):** no trigger copies ≤54 typed
+bytes into the stack. The 100-byte strcpy is the only observed stack-tiling
+copy on CY-845, and it requires `strlen(0x8154) ≥ 100` — unreachable typed
+(§7, §7d). The `A`/`M`/digits `8`/`5` bytes are typable, but every shorter
+trigger (A^0-class eval, 1÷3(4) auto-paren, Pol(/Integral-templates) ran
+**without any stack-tile copy** (`tiles(38 35)=0`, `h4d20=0` — diffs are
+eval state-keeping). A physical typed-ROP exploit on CY-845 requires either
+a previously-unknown shorter-copy trigger or a previously-unknown ≥100-byte
+typed-entry state (e.g. a working LineIO box-fill / unstable-char advance);
+none exists in this repository, in the emulator, or in any public artifact
+searched (§2, §2b).
+
+## 7d. Shorter-overflow triggers with typable payload — all negative
+
+`rop_trig3.lua` (1× clock; per-test RAM diff-scan 0x8100..0x8E7F, 38-35 tile
+count past 0x8240, @0x3538/@0x4D20 classes). Exact stdout `/tmp/trig3.log`:
+
+| Test | Typed keys | Result (exact) |
+|---|---|---|
+| 1. `A^0`-class (tieba A^0法; tieba p/2767270777 is 403-blocked, reconstructed) | `ALPHA`+`√`-row-key (0x04) ×3, the `^`-template key (0x46) ×2, `1` (bug: 0x00=1, not 0), `EXE`, `AC`, `←`, 28×(`8`/`5`), `AC ← EXE` | `A` lands 3/3 (`buf=41 41 41…`) — **`A` var is typable** (`ALPHA`+0x04→`41`; the one-shot enum §6 missed it via drop). Template 0x46 inside the run = `5E B8 60 31 B9` fragment-shifts. `TRIG[A0-EXE]: diff=426 tiles(38 35)=0 blen=9 pc=3484 sp=8D4D h3538=144 h4d20=0`; post-trigger `regions 8C38-8D1F/8D28-8DE1` = eval state-keeping only |
+| 2. `1÷3(4)` auto-paren (the tiplanet no-Σ method) | `1` `÷` `3` `(` `4` `)` `EXE LEFT` + 28×(`8`/`5`) + `AC ← EXE` | **did not even type** — `TRIG[T2-EXE]: diff=5 tiles=0 blen=9 pc=4B96` (idle; the old test-1 buffer intact). `TRIG[T2-EXE2]: diff=225 tiles=0 blen=9 pc=3484 sp=8D4D h4d20=0` — the EXE2 evaluated with whatever was in the buffer; the stack diffs again = `=`-processing state-keeping, no 0x8220+ tiles |
+| 3. `Pol(`-template | `SHIFT`+`+` (6C Pol() + 24×(`8`/`5`) + `AC ← EXE` | `TRIG[T3-EXE]: diff=220 tiles=0 blen=9 pc=3484 sp=8D4D h3538=884 h4d20=0` — same eval-state pattern, no tiling |
+
+**Critical sub-finding — the `3538`-word is context-bound**: inside
+template-box states (x^box / ×10ⁿ exponent pocket), the `8` presses insert as
+box-fragment fills (`…60 31 38 38 38 38 B9 31`) with the `5` press rejected —
+the clean adjacent `38 35` pairs form **only in the plain-formula state**
+(§7's positive landing). Since every candidate shorter trigger ends inside a
+template-box, the typed `0x3538` sled cannot be combined with any of them.
+
+**Chain classes**: `h4d20 = 0` in every test; all `@0x3538` hits carry the
+app's own signature (`lr=3322`, sp=8D33-8D5F). **No trigger ties the ≤54-byte
+typed input to any stack-tile copy.**
+
+## 8. Sources / discrepancies vs the original brief
+
+- All 45 keys verified against `rop_e2e.lua`'s `push`/`chord` list (§3).
+- Discrepancies vs the previous version of this doc: none in the key list;
+  the fillers ("91×'1'") do not exist in `rop_e2e.lua` (owned by the older
+  `rop_proto`/`input_path` scripts); the payload is injected, never typed
+  (§2 — now proven impossible to type).
+- The v4 draw words land in the firmware's DSR-banked LCD window (Session 19),
+  not the Lua-visible `0xF800` — the row-0 draw remains unresolved without a
+  DSR gadget regardless of payload delivery.
+- **`0E 4D` typed = DEFINITIVE NO** (three independent sources agree: the ROM
+  keycode tables, the wiki symbol table, and the live 130-sample enumeration).
+- **Physics test**: never run (emulator-only). The typed chain has never
+  executed in any run in this repository.
