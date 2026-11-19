@@ -16,6 +16,7 @@ ceiling and the untypable `0E`/`4D` payload bytes. All experiments in
 | ≥100-byte typed input state | **NOT reached.** Cap = 99 bytes = cursor/len var 0x8114 = 0x63; byte 0x81B7 (input index 99) is never written by any typed mechanism tested. The tiling gate is measurably `strlen(0x8154) ≥ 100` (V1 vs V5 differential). |
 | Shorter stack copy (≤54 tokens) | **None exists among tested triggers.** `A^0`, `1÷3(4)`, `Pol(` (prior `rop_trig3`), ∫( head, STAT/EQN/TABLE rows, 8 DEL-dance variants — `h4d20 = 0` in every run. |
 | Untypable `0E`/`4D` | Still untypable (no new token source found). The `0x3538` word remains the only typeable gadget word; the sled problem is unchanged. |
+| Render-echo overruns (`dst=0x8138/0x8168…` copies) as the 100th-byte path | **NEGATIVE** (V10c/d/e/f census + per-tick `0x81B7` oracle: zero crossings ever observed; the AC stamp's write starts at 0x81B8; the window echoes never fire crossing; details §4a) |
 
 Top candidate (still blocked by exactly one byte): the **typed 99-byte
 post-dance fill + `[AC][←][EXE]` trigger** — the full mechanism (decoupled
@@ -105,18 +106,44 @@ inner copy loop `0x6B62` (`0x2B10` smart_strcpy → `0x6B58`):
   paths into the cache = (a) the AC-stamp (bounded by the 99-typed cap) and
   (b) the row-editor mirror (bounded by the 61-typed cap). → **closed for now**.
 
-## 4. Item 4 — input-state bugs writing past 0x8154 with ≤54 tokens
+## 4. Input-state bugs writing past 0x8154 with ≤54 tokens
 
-- The **render echo overruns**: during the trigger, `strcpy(dst=0x8132/0x8135/
-  0x8138/0x8168/0x8169, src=0x8154)` copies ~strlen(0x8154) bytes into small
-  work windows below/right of the input head every redraw (V1: 51×
-  `dst=0x8138`, 27× `dst=0x8168`, 36× `dst=0x8169`, 32× `dst=0x8135`,
-  3× `dst=0x8132`). With len≈99 these write `0x8132..0x819C` and
-  `0x8168..0x81CC` — i.e. far past their window and **across the cache head** —
-  with NO token-count dependency beyond the formula length. [INFERENCE] This
-  is state-keeping the firmware survives by re-initialising those windows; no
-  path from ≤54 typed tokens reaches them with attacker-chosen content AND a
-  later return-address consumer. Measured: no effect on control flow in any run.
+### 4a. Re-examination: render-echo overruns as a path to 0x81B7 — NEGATIVE (measured 2026-11-19, V10a–f)
+
+Full census at the copy-loop exit `0x6B6E` (registers `ER8`=dst,
+`ER10`=post-advanced src; true length recounted; per-tick `0x81B7` transition
+watcher `B7CHANGE` active; raw dumps `0x81A0..0x81C8` at every trigger key):
+
+| Copy class (measured) | Fires when | Write range | Crosses 0x81B7? |
+|---|---|---|---|
+| per-keystroke cache echo | every trigger key processing | `dst=0x8398 ← src=0x81B8, len=11` (writes `0x8398..0x83A3`) | No |
+| **AC stamp** | every AC/blink processing (~20k copies logged uncapped) | `dst=0x81B8 ← src=0x8154, len=strlen(0x8154)=99` — writes `0x81B8..0x821B` (99 bytes + NUL at `0x821B`); cache verified = typed bytes (`c8B8=32383838`) | **No — dst starts at 0x81B8** |
+| V1-class window echoes (`dst=0x8132/0x8135/0x8138/0x8168/0x8169 ← src=0x8154`) | redraw-coincident only (frame-phase dependent; 0 occurrences in 3 fresh V1-exact reruns vs 84 logged in the original V1 sample) | with `len=99` would write `0x8168..0x81CB` → WOULD cross; with short src, writes only the low window | Never observed crossing: `B7CHANGE` fired **zero** times in ~2.6M postticks across V10c/d/f; `data[0x81B7]=00` at every echo sample and at all four `[AC][←][EXE][EXE]` keys |
+
+- The `0x8168+99=0x81CB` algebra is correct, but the class either never fires
+  at full length or its overrun is consumed within the same tick — the
+  per-tick oracle and the copy-exit census (which samples `data[0x81B7]`
+  after each copy) both read `00` through every run. V1's `len=99` blen read
+  (first NUL at 0x81B7) also bounds it: a crossing write would have moved the
+  NUL, contradicting the measured watch lines.
+- **No timing hole**: the echo/stamp/stamp-repeats all run inside single
+  postticks; `AC`/`←`/`EXE` ordering variants (`[AC][←][EXE][EXE]`, EXE-only,
+  Right-held) all sample `b7=00`, `strlen(0x8154)=99` at every key.
+- The `0x85AA` echo (`0x7554`: `strcpy(0x85AA, 0x8154)`, also
+  len=strlen(0x8154)) is spatially irrelevant to the gate: it writes
+  `0x85AA..0x860D`, away from `0x81B7/0x81B8`.
+- Flood check: `h4d20 = 0` in every census run; no chain-class activity.
+
+Scripts/log: `rop_v10.lua` (budgeted census), `rop_v10b/c/d/e/f.lua`
+(filtered + corrected-decode reruns), `/tmp/v10.log v10b.log v10c.log
+v10d.log v10e.log v10f.log`. **Conclusion: the echo-overrun family is not a
+keyboard-only path to the 100th byte.**
+
+### 4b. Other writes past 0x8154
+
+- Control-flow outcome with ≤54/99 typed tokens: unchanged — nothing typed
+  changed control flow in any run (`h4d20=0` everywhere); control-flow changes
+  require injected bytes (see §3, V5/V9).
 - Trigger sequence `[AC][←][EXE][EXE]`, `EXE` alone (E4), reset-race (V8),
   Right-held (V9) — nothing typed changed control flow; control-flow-changing
   runs require the injected bytes: V5's shifted sled corrupted the stack into
@@ -162,6 +189,7 @@ SDL_VIDEODRIVER=dummy ./emulator/emulator model=models/fx991esplus2 script=rop_v
 SDL_VIDEODRIVER=dummy ./emulator/emulator model=models/fx991esplus2 script=rop_v7.lua   # dance variants
 SDL_VIDEODRIVER=dummy ./emulator/emulator model=models/fx991esplus2 script=rop_v8.lua   # reset-race
 SDL_VIDEODRIVER=dummy ./emulator/emulator model=models/fx991esplus2 script=rop_v9.lua   # full tiling trace w/ e2e sled
+SDL_VIDEODRIVER=dummy ./emulator/emulator model=models/fx991esplus2 script=rop_v10.lua  # echo census (budgeted); b/c/d/e/f = filtered/corrected reruns
 ```
 
 Logs: `/tmp/v1.log v1b.log v2a.log v3.log v4.log v5.log v6.log v7.log v8.log
