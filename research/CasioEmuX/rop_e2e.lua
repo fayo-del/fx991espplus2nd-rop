@@ -95,6 +95,10 @@ function finish(tag)
 	phase = "done"
 end
 
+-- unique pattern (harness-planted) at 0x8C74
+local uniq={0xDE,0xAD,0xBE,0xEF,0x12,0x34,0x56,0x78,0x9A,0xBC,0xDE,0xF0}
+for i=1,#uniq do data[0x8C70+i]=uniq[i] end
+be35_hits, be35_mine = 0, 0
 break_at(0x4D20, function()
 	scan_hits = scan_hits + 1
 	local w = {}
@@ -103,18 +107,25 @@ break_at(0x4D20, function()
 		(cpu.r1 & 0xFF) * 0x100 + (cpu.r0 & 0xFF), cpu.sp, table.concat(w, " ")))
 	emu:set_paused(false)
 end)
+local h38 = 0
 break_at(0x3538, function()
-	local w = {}
-	for i = 0, 11, 2 do w[#w+1] = string.format("[%04X]=%04X", cpu.sp + i, data[cpu.sp + i] | (data[cpu.sp + i + 1] << 8)) end
-	print(string.format("HIT-3538: sp=%04X ER2=%04X lr=%04X words=%s", cpu.sp,
-		(cpu.r3 & 0xFF) * 0x100 + (cpu.r2 & 0xFF), cpu.lr, table.concat(w, " ")))
-	unbreak_at(0x3538)
+	h38 = h38 + 1
+	if h38 <= 4 or (cpu.sp >= 0x8D50 and cpu.sp <= 0x8DC0) then
+		print(string.format("HIT-3538 #%d: sp=%04X ER2=%04X lr=%04X", h38, cpu.sp,
+			(cpu.r3 & 0xFF) * 0x100 + (cpu.r2 & 0xFF), cpu.lr))
+	end
 	emu:set_paused(false)
 end)
+be35_hits, be35_mine = be35_hits or 0, be35_mine or 0
 break_at(0x35BE, function()
-	print(string.format("HIT-35BE: sp=%04X ER2=%04X (r2=%02X r3=%02X) EA=%04X r0=%02X lr=%04X", cpu.sp,
-		(cpu.r3 & 0xFF) * 0x100 + (cpu.r2 & 0xFF), cpu.r2 & 0xFF, cpu.r3 & 0xFF, cpu.ea, cpu.r0 & 0xFF, cpu.lr))
-	unbreak_at(0x35BE)
+	be35_hits = be35_hits + 1
+	local er2 = (cpu.r3 & 0xFF) * 0x100 + (cpu.r2 & 0xFF)
+	if er2 == 0xF801 then
+		be35_mine = be35_mine + 1
+		local d={}
+		for i=0,11 do d[#d+1]=string.format("%02X", data[0xF810+i]) end
+		print(string.format("HIT-35BE(mine) #%d: sp=%04X ER2=%04X EA=%04X r0=%02X lr=%04X pre-F810=%s", be35_mine, cpu.sp, er2, cpu.ea, cpu.r0 & 0xFF, cpu.lr, table.concat(d)))
+	end
 	emu:set_paused(false)
 end)
 -- filtered store-capture: fire at 0x35CC (post-ST) only when ER2 in [0xF800..0xF8FF]

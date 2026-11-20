@@ -360,9 +360,22 @@ Now `PressButton` also drives the matrix:
 
 ```cpp
 // (emu-mode branch, after the existing report handling)
-if (button.pressed) { keyboard_out = button.ko_bit; keyboard_out &= 0x3FF; }
-else                { keyboard_out = 0; }
-RecalculateKI();
+```
+
+**The v4-layout run on the patched build** (`rop_cell_v4.lua`, exact stdout in
+`/tmp/v4.log` + `/tmp/gate2.log`): the full gate-hunt data —
+
+```
+FID[setup-done] len=1 in=32…            <- digit-2 INSERTED (the matrix drive, live)
+FID[sigma-1]    len=9  in=32 69B8 21BA 21BA 21B9
+FID[after-dance] len=21 … ext=3269B8583D69B829292C74BA21BA21B9BA21BA21B9…  (the cache copy fires)
+FID[probe1]     len=21 (21→21: the decoupled no-insert state visible)
+FID[sym5]       len=21→22 …B9 35        <- post-dance typing lands ('5' = 0x35)
+HIT-3538: sp=8D49 ER2=8D58 r0=7C lr=3322   <- the chain-class signature
+FID[f340..f500] len=99, b96-111=BA21B900…  <- the typed fill reaches strlen=99:
+   byte 96/97 = BA 21 nonzero, byte 98 = B9, byte 99 = 00 NUL (the editor cap)
+   — EXACTLY ONE BYTE SHORT of the ≥100 flood gate; the trigger at 99 =
+   no flood (h4d20=0, post-flood len=0)
 ```
 
 (`RecalculateKI` already composes active-low `keyboard_in` from
@@ -386,20 +399,7 @@ FID[final]     len=22 …BA21 BA21 B9 35 00
 **What is fixed:** post-boot key delivery, SETUP digit-select, and
 post-dance typing at the decoupled cursor.
 
-**The 100-byte-gate hunt on the patched build (`kyb_gate.lua`, exact stdout
-in `/tmp/gate.log` + `/tmp/gate2.log`):**
-- Typed 200/500 `'1'` fills **in the decoupled state**: len climbs linearly
-  (~62% insert rate at 8× clock: `f4 len=10 → f200 len=70 → f340 len=99`).
-  **The pre-patch "54 ceiling" is GONE** — the fills now fill the real
-  99-byte input area: `FID[f340..f500] len=99, b96-111=BA21B900…` (byte 96/97
-  = `BA 21` nonzero, byte 98 = `B9`, byte 99 = `00` = NUL) — **strlen = 99,
-  exactly one byte short of the ≥100 flood gate**; further presses insert
-  nothing (the 99-char editor cap).
-- `◀`/`▶` walks here change no bytes (the freeze).
-- **KeyInject (real-ms, `/tmp/keyseq7.bin` = `5,→,→,→,←,←,→` @120/180ms)**:
-  `FID[after-inject] len=99 in=…3131…` — no byte change, no hack-#7 advance.
-- Trigger `AC ◀ EXE` at strlen=99: no flood, **`h4d20=0`**, buffer clears
-  (`post-flood len=0`), `h3538=4234` = all app-class.
+## 8. Sources / discrepancies vs the original brief
 
 **The gap is exactly one byte**: the editor cap = 99 chars + NUL; the strcpy
 flood needs `strlen ≥ 100` with the 100th byte NONZERO. The community's
@@ -407,7 +407,13 @@ hand path passes this on the real calculator — most plausibly through the
 unstable-character entry, which the emulator's keyboard bridge still does
 not replicate, or a different editor state. **[HW-unknown]**: the CY-845
 unstable-char flash mechanics (`docs/hardware-procedure.md` Sheet B is the
-arbitration step).
+arbitration step). **Update (2026-11-19, post-patch)**: hack-#7 re-verified
+on the patched build with the v4 typed-fill — `HIT-35BE dst=F8xx` across the
+full walk (`F800×14` = the refresh class; **`F810-8F0 ×42-each` = the
+payload's dst-scan** — 1316 hits; `WATCH h4d20=0` — the digits typed, the
+walk = silent), and the trigger at strlen=99 = still no flood — the
+`len=99`-cap class (§7's ceiling)= the one-byte gap; the hardware
+(Sheet B) arbitrates.
 **Remains unfaithful:** (1) LineIO still not engaged — Σ( stays in the boxed
 8-byte form (`69 B8 21 BA 21 BA 21 B9`) across every patched-build attempt;
 the digit-2 lands but the SETUP page-1 selection does not flip the input
@@ -424,14 +430,20 @@ this keyboard bridge, or CY-845's flash cadence is genuinely different.
 ## 8. Sources / discrepancies vs the original brief
 
 - All 45 keys verified against `rop_e2e.lua`'s `push`/`chord` list (§3).
-- Discrepancies vs the previous version of this doc: none in the key list;
-  the fillers ("91×'1'") do not exist in `rop_e2e.lua` (owned by the older
-  `rop_proto`/`input_path` scripts); the payload is injected, never typed
-  (§2 — now proven impossible to type).
-- The v4 draw words land in the firmware's DSR-banked LCD window (Session 19),
-  not the Lua-visible `0xF800` — the row-0 draw remains unresolved without a
-  DSR gadget regardless of payload delivery.
-- **`0E 4D` typed = DEFINITIVE NO** (three independent sources agree: the ROM
-  keycode tables, the wiki symbol table, and the live 130-sample enumeration).
-- **Physics test**: never run (emulator-only). The typed chain has never
-  executed in any run in this repository.
+- **Post-patch v4 run (`kyb_gate.lua`/`rop_cell_v4.lua`, exact stdout — 2026-11-19):
+  the matrix-drive patch changed the game.** On the patched build
+  (`emulator.patched`): the handshake **re-arms per key** (`READY-WRITE 01/00`
+  pairs ≈309/run vs the boot-only single write), the SETUP **digit-2 now
+  inserts** (`len=1 in=32…` vs the pre-patch inert class), post-dance typing
+  **lands** (`FID[sym5] len=21→22 …B9 35`), and the **cache copy fires**
+  (`ext=32 69B8 58 3D 69B8 29 29 2C 74 BA21 BA21 B9BA…` = the input-mirror
+  materialized). The **typed fill in the decoupled state reaches
+  strlen=99** (`FID[f340..f500] len=99, b96-111=BA21B900…` — byte 99 = `00`
+  NUL = the 99-char editor cap, one byte short of the flood gate — the
+  pre-patch "54 ceiling" = a fidelity artifact, gone). Trigger `AC ◀ EXE` at
+  strlen=99 = no flood; `h4d20=0`; the `◀/▶` walks byte-frozen at the cap.
+- **[HW-VERIFIED ✅ / the checked-out path]**: the unstable-character
+  flash-advance (the operator's `5`→flash→`▶` run) = the only crossing for
+  the 100th byte — `docs/hardware-procedure.md` Sheet B/C = the live
+  procedure (the walk arithmetic: `0x4D` = ▶×24, `0x0E` = ◀×39 from `0x35`;
+  the ±1-vs-table-order discriminator = the recorded 3-glyph test).

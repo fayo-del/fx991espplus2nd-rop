@@ -858,3 +858,30 @@ hit the main window. Both domains are independent:
   else. Script `rop_e2e.lua` contains a latent bug (finish() referenced before
   definition) that fired when my filtered breakpoint triggered early — harmless to the
   earlier results, fix before reuse.
+
+## Session 20 — 0x3538 never reached from the typed chain (traced, exhaustive)
+
+Filtered/expanded breakpoint logging over the full run:
+```
+HIT-3538 #1..#4:    sp=8D49 ER2=8D58 lr=3322   (app-internal, repeated)
+HIT-3538 #23..#30:  sp=8D89 ER2=8D95 lr=3322   (app-internal, repeated)
+HIT-35BE(mine):     only the app's refresh calls (sp=8DE0 ER2=F810 r0=1F rows-refresh)
+CHAIN: KEYSCAN #4 sp=8DAC words[sp-8..sp+7]=4D0E 4D0E 4D0E 4D0E 3538 3538 F801 35BE
+PROTO: NO-TRIGGER pc=8F54 sp=4CF0 (park)
+```
+0x3538 hits = **only app-internal frames (sp=0x8D49/0x8D89)** — the typed chain's walk
+**never arrives at the 0x3538 gadget**, even though my words (`3538 3538 F801 35BE`) are
+visible in the walk-window at sp=0x8DAC. After KEYSCAN#4 the state goes to the wait-key
+tree without any observable consumption of my command words — the app's return path at
+that depth does not `POP PC`/`POP LR` the next words (likely an `RT`-through-LR whose LR
+was set earlier, or an unwind that skips them). Additionally: the app **refreshes row 1
+continuously** (`HIT-35BE(mine)` with ER2=0xF810 sp=0x8DE0 r0=0x1F = its row-refresh:
+row1 always re-zeroed inside one frame).
+
+**Final honest state:**
+- typed chain: deterministic KEYSCAN hops proven (reproducibly), deeper steering into
+  the 0x3538/0x35BE gadgets from the tile-walk = not achieved;
+- visible cell: **harness path only** (`rop_green2.lua`, FFx12 on LCD, reproducible);
+- the app actively refreshes LCD rows (incl. row 1) every frame — any cell via a single
+  store gets erased within a frame; a persistent cell requires either the app's own
+  draw-buffer state or a re-draw loop winning the refresh race.
