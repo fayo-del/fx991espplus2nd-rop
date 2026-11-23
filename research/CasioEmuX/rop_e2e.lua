@@ -11,7 +11,7 @@ local PAY_IN = 0x8154
 local keys, ki = {}, 0
 local state, hold_t, gap_t, cur = "idle", 0, 0, nil
 local phase, final_t, snap = "type", 0, {}
-local scan_hits, store_caps = 0, 0
+local scan_hits, store_caps, dump1 = 0, 0, 0
 local lineio = false
 
 local function blen()
@@ -103,8 +103,8 @@ break_at(0x4D20, function()
 	scan_hits = scan_hits + 1
 	local w = {}
 	for i = -8, 7, 2 do w[#w+1] = string.format("%04X", data[cpu.sp + i] | (data[cpu.sp + i + 1] << 8)) end
-	print(string.format("CHAIN: KEYSCAN #%d ER0=%04X sp=%04X words[sp-8..sp+7]=%s", scan_hits,
-		(cpu.r1 & 0xFF) * 0x100 + (cpu.r0 & 0xFF), cpu.sp, table.concat(w, " ")))
+	print(string.format("CHAIN: KEYSCAN #%d ER0=%04X pc=%04X sp=%04X lr=%04X words[sp-8..sp+7]=%s", scan_hits,
+		(cpu.r1 & 0xFF) * 0x100 + (cpu.r0 & 0xFF), cpu.pc, cpu.sp, cpu.lr, table.concat(w, " ")))
 	emu:set_paused(false)
 end)
 local h38 = 0
@@ -119,12 +119,21 @@ end)
 be35_hits, be35_mine = be35_hits or 0, be35_mine or 0
 break_at(0x35BE, function()
 	be35_hits = be35_hits + 1
+	if phase == "final" and final_t > 60000 and be35_hits > 0 and dump1 == 0 then
+		dump1 = 1
+		local a = ""
+		for i = 0, 0x1F do a = a .. string.format("%02X", (data[0x87D0 + i] or 0) & 0xFF) end
+		local b = ""
+		for i = 0, 0x1B do b = b .. string.format("%02X", (data[0xF800 + i] or 0) & 0xFF) end
+		print("IMMDUMP-87D0 " .. a)
+		print("IMMDUMP-F800 " .. b)
+	end
 	local er2 = (cpu.r3 & 0xFF) * 0x100 + (cpu.r2 & 0xFF)
-	if er2 == 0xF801 then
+	if (er2 & 0xFFF8) == 0xF800 then
 		be35_mine = be35_mine + 1
 		local d={}
 		for i=0,11 do d[#d+1]=string.format("%02X", data[0xF810+i]) end
-		print(string.format("HIT-35BE(mine) #%d: sp=%04X ER2=%04X EA=%04X r0=%02X lr=%04X pre-F810=%s", be35_mine, cpu.sp, er2, cpu.ea, cpu.r0 & 0xFF, cpu.lr, table.concat(d)))
+		print(string.format("HIT-35BE(mine) #%d: sp=%04X ER2=%04X EA=%04X r0=%02X lr=%04X pattern-src=%02X%02X%02X%02X", be35_mine, cpu.sp, er2, cpu.ea, cpu.r0 & 0xFF, cpu.lr, data[0x8154] or 0, data[0x8155] or 0, data[0x8156] or 0, data[0x8157] or 0))
 	end
 	emu:set_paused(false)
 end)
@@ -206,18 +215,17 @@ addposttick(function()
 			Keyboard:PressKey(LEFT)
 		elseif final_t == 36001 then
 			Keyboard:ReleaseAll()
-			for e = 0, 49 do
-				data[PAY_IN + e * 2] = 0x0E
-				data[PAY_IN + e * 2 + 1] = 0x4D
-			end
+			for i = 0, 11 do data[0x87D0 + i] = 0xA0 + ((i % 5) + 1) * 16 + (i % 5) + 1 end
+			pat0 = 1
+			for e = 0, 49 do data[PAY_IN + e * 2] = 0x0E; data[PAY_IN + e * 2 + 1] = 0x4D end
 			local function W(off, v) data[PAY_IN + off] = v & 0xFF; data[PAY_IN + off + 1] = (v >> 8) & 0xFF end
-			W(60, 0x3538); W(62, 0x3538)   -- doubled: POP ER2;POP LR;RT gadget
-			W(64, 0xF801)                   -- ER2 = 0xF801: writes align to row 0; gadget's MOV ER0,ER2 leaves r0=1
-			W(66, 0x35BE)                   -- LR = memcpy12; RT jumps there
-			W(68, 0x8154)                   -- memcpy's POP EA: src = our own tile pattern
-			-- 70..83 = memcpy tail sacrifice (0E4D); 84..99 = pad
-			print("INPUT: payload-v5 in, len=" .. blen())
-			print("INPUT: (payload-v2 above)")
+W(48, 0x3538) W(50, 0x3538) W(52, 0xF801) W(54, 0x35BE) W(56, 0x8154)
+
+
+
+
+			-- 70..83 = memcpy tail sacrifice; 84..99 = pad
+			print("INPUT: payload 0E4D-flood in, len=" .. blen())
 		elseif final_t == 40001 then
 			Keyboard:PressKey(0x60)
 		elseif final_t == 60001 then

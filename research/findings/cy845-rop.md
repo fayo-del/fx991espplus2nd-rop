@@ -13,16 +13,17 @@ All addresses from the **CY-845A ROM** `research/CasioEmuX/models/fx991esplus2/r
 | POP PC (return gadget) | `0x2B1E` | `8E F2` | line 5484: `2B1E: POP    PC` |
 | POP PC #2 | `0x2B22` | `8E F2` | windows disasm `2B22: POP PC` |
 | smart_strcpy (PUSH LR … POP PC pair) | `0x2B10` | `CE F8 …` | line ~5476: `2B10: PUSH LR`, `2B1E: POP PC` |
-| **getkeycode** (key poll, leaf, RT) | `0x4D0E` | `00 11 … 0C F0 40 F0 30 92 FF 72` | lines 9212-9220: `4D0E: MOV R0,#254 / 4D10: ST R0,00F62h(=ST [0xF046], KOD) / 4D14: MOV ER0,#0 / 4D16: LEA 0xF040 / 4D1A: L R2,[EA] / 4D1C: CMP R2,#255 / 4D1E: ADDC R0,#0 / 4D20: RT`. KOD `0xF046` write verified by raw-byte scan (`11 90 46 F0` at 0x4D00/0x4D10/0x6C06); KID `0xF040` read via `LEA 0xF040` (bytes `0C F0 40 F0` at 0x4D16 and 0x1669C) |
+| **getkeycode** (key poll, leaf, RT) | `0x4D0E` | `7F 00 11 90 46 F0 00 E0 0C F0 40 F0 30 92 FF 72 00 60 1F FE` | **(corrected 2026-11-21, instruction-level disasm in `research/findings/rop-workload.md`; the old `MOV R0,#254` / `ST R0,00F62h` read was WRONG — the KOD write is `[0xF046] ← 0x7F`)**: `4D0E: MOV R0,#127 / 4D10: ST R0,[0xF046] (KOD) / 4D14: MOV ER0,#0 / 4D16: LEA 0xF040 / 4D1A: L R2,[EA] / 4D1C: CMP R2,#255 / 4D1E: ADDC R0,#0 / 4D20: RT`. KID read `0xF040` via `LEA 0xF040` (bytes `0C F0 40 F0` at 0x4D16; also 0x1669C); KOD write `[0xF046] ← 0x7F` (bytes `11 90 46 F0` at 0x4D10) |
 | KOMASK region | `0xF044` size 15 (ROM never writes `0xF044` directly via imm16; scan does it through KO regs) | — | emulator `Keyboard::Initialise` creates MMU regions 0xF040(KI), 0xF041, 0xF042, 0xF044(size 15): objdump `mov $0xf040/$0xf041/$0xf042/$0xf044,%esi` at 0x33027/0x330c8/0x33150/0x331e2 |
 | **copy gadget memcpy12** | `0x15664` | — | lines 37994-38016: `15664: PUSH QR0 / 15666: PUSH XR4 / 15668: MOV ER10,ER0 / 1566A: PUSH ER6 / 1566C: LEA [ER6] / 1566E: L QR0,[EA+] / 15670: L ER2,[EA+] / 15672: LEA [ER10] / 15674: ST QR0,[EA+] / 15676: ST ER2,[EA+] / 15678: POP ER8 / … / 15692: POP XR4 / 15694: POP QR0 / 15696: RT` — copies **12 bytes** `[ER6]→[ER0]`; balanced pushes (10 B) and `RT` so it continues a ROP chain. `MOV R10,ER0` at entry: **dst = ER0, src = ER6** |
+| **draw head + near memcpy12** | `0x3538` / `0x35BE` | `1E F2 1E F8 25 F0 1F FE` / `8E F1 …` | **(corrected 2026-11-21, instruction-level disasm in `research/findings/rop-draw.md`; supersedes Session 17/18's "0x3538 = POP ER2; POP LR; ..." and "memcpy executed with stack-controlled ER2/LR" — both WRONG)**: `0x3538: 1E F2 POP ER2 / 1E F8 POP ER8 / 25 F0 MOV ER0,ER2 / 1F FE RT` — loads **dst ER2** + scratch ER8, sets r0=ER2&0xFF, returns to LR (never loads LR). `0x35BE: POP EA / L+ST XR4/QR8 loop, 12 bytes, / ADD ER2,#16 / ADD R0,#-1 / BC NE / POPs / RT`. Proven: `G38-HIT[8:3538] sp=8DA4 ER2=81FF ER0=0000 r0=00 lr=2B1E`, then `MBE-HIT[E:35BE] sp=8DAC ER2=F801 EA=F040 r0=01 lr=2B1E src=8154 src12[8154]=0E4D0E4D0E4D0E4D0E4D0E4D` (`rop_draw3.out`). *Probe note:* `break_at` is **bank-blind** (matches `real_pc=(csr<<16)|(pc&~1)`; POP-PC also pops `csr = next-word & 0xF`) — future probes must arm `((csr<<16)|addr)`; instruction fetch is ROM-only (`MMU::ReadCode`), so a PC pointing at RAM executes the ROM at that offset |
 | POP ER0; POP PC (load-and-continue) | `0x16F18` | — | line 40658: `16F18: POP ER0`, next line `16F20: POP PC` (16F20 approx; pair grep-verified) |
 | POP ER6; POP R9; POP PC | `0x10B5A` | — | line 29892: `10B5A: POP ER6` → `10B5C: POP R9 → POP PC` (pair found at `10B5C`, i.e. POP ER6 starts 0x10B5A) |
 | Other verified `POP ERn; POP PC` | 0x10E30 (ER2), 0x145FA/0x14614/0x14662 (ER14;POP R2), 0x148C6 (ER12), 0x14B04/0x14B82 (ER6), 0x14DDA (ER4;ER2), 0x174D2 (ER0;ER4), 0x16088 (ER12;R2) | — | pair scan over the full disassembly |
 | line_print (string draw) | `0x327E` | `CE F8 7E F8 …` | lines 6363+: `327E: PUSH LR / 3280: PUSH QR8 / 3282: MOV ER2,ER0 / 3284: MOV ER10,ER8 / 328A: L R0,081F8h / 329C-32B4 scan loop over [ER10] / 32B8: MOV ER8,ER10 / 32BA: POP QR8 / 32BC: POP PC`. Args: **ER0 = state/font ptr, ER8 = string ptr** (walked until 0) |
 | draw_char | `0x32BE` | — | line 6393: `32BE: PUSH LR / 32C0: PUSH XR8 / 32C2: PUSH QR8 / 32C4: MOV ER14,SP / 32C6: ADD SP,#-29h / 32C8: CMP R0,#250 / 32CA…` (matches task anchor) |
 | render (buffer copy 0x87D0→LCD) | unknown | — | only one `LEA 0x87D0` in ROM (bytes `0C F0 D0 87` at file off 0x3146, inside a 12×8-byte clear loop `ST QR8,[EA+]` at 0x314C). No `LEA/L/ST` with 0xF800 immediate anywhere (raw-byte scan empty) — the LCD copy path not located this session |
-| ROM wait/park loop (safe spin) | `0x4EF2` | `CE F8 00 F0 10 92 …` | lines 9431+: `4EF2: PUSH LR / 4EF4: MOV R0,#128 / 4EF6: BL 0x4C7C-like poll / 4EFA: CMP R0,#103 / 4EFC: BC NE,0x4EF4 / 4EFE: POP PC` — balanced, single LR push, ideal chain terminator |
+| ROM wait/park loop (safe spin) | `0x4EF2` | `CE F8 01 00 01 F0 08 85 E6 70 FB C8 8E F2` | **(corrected 2026-11-21, `research/findings/rop-move.md`)** `4EF2: PUSH LR / 4EF4: MOV R0,#1 / 4EF6: BL 0x8508 / 4EFA: CMP R0,#230 (0xE6) / 4EFC: BC NE,0x4EF4 / 4EFE: POP PC` — **NOT "CMP R0,#103"** (earlier read was wrong). This is a **key-gated resume**, not a pure park: it spins in 0x8508 (the observed "park" pc=4B96) until a key delivering 0xE6 arrives, then `POP PC` resumes the walk |
 | `B ER0` | `0x5690` | `02 F0` | windows disasm `5690: B ER0` |
 | `MOV SP, ER14` pivots | 0x2D5C, 0x11156, 0x111DA, 0x10F4C, 0x10F70, 0x5238 (+ task's other candidates) | — | e.g. `2D5C: MOV SP,ER14 / 2D5E: POP XR12 / 2D60: POP PC`; `10F4C: MOV SP,ER14 / 10F4E: POP ER14 / 10F50: POP PC`; `5238: MOV SP,ER14 / 523A: POP XR8 / 523C: POP QR8 / 523E: POP PC` |
 | LCD | `0xF800`, 16 B/row, rows 0..31, 12 visible bytes (MSB first) | — | emulator lua-common (`screen_ncol=12, screen_row_width=16` for hwid 3); snake.lua |
@@ -468,8 +469,10 @@ Cross-run correlation table (typing works/fails vs start time):
 | `rop_proto2.lua` (S8/S9, 5 runs) | T=100k–400k | **NEVER** |
 
 **The keyboard→input-buffer delivery works only during the first ~0.25–0.4 s after
-reset.** After that the app sits in the `0x4EF2` wait-key(103) loop and discards other
-keys (the wait compares the polled code against 103 = the key it waits for). Neither the
+reset.** After that the app sits in the `0x4EF2` wait loop and discards other
+keys (**corrected 2026-11-21, `research/findings/rop-move.md`: 0x4EF2 = `BL 0x8508`
+spin + `CMP R0,#230 (0xE6)` + `POP PC` — a key-gated resume, not wait-key(103)**; the
+wait compares the polled code against 0xE6). Neither the
 ON-key, nor the SDL-frame timing, nor the clock speed is the cause. Practical rule:
 **scripts must start typing immediately at T≈0** (which is also what the working
 community flows effectively do); probing/monitoring can happen later.
@@ -885,3 +888,325 @@ row1 always re-zeroed inside one frame).
 - the app actively refreshes LCD rows (incl. row 1) every frame — any cell via a single
   store gets erased within a frame; a persistent cell requires either the app's own
   draw-buffer state or a re-draw loop winning the refresh race.
+
+# Fresh runs 2026-11-21 (post-recovery appendix)
+
+**Recovery note.** The working copy of this file was accidentally overwritten 2026-11-21. The
+last committed version (git `fx991espplus2nd-rop` @ `f421a3b`, "Session 21 sync") has been
+restored **verbatim** above (887 lines, Sessions 1–21). Sessions 22–30 of the working copy
+were **never committed** and are **unrecoverable** from git (single clone, no stash, no
+dangling objects). Their measured negative results (0x3538-march draw attempts leaving only
+transient row 2–5 footprints, single-cell draws erased by the app's per-frame refresh) are
+preserved below only where the fresh run logs still show the underlying evidence.
+
+Three fresh emulator runs are the ground truth for this section:
+
+- `/tmp/rop_green2.now` — harness chain (kicked via `cpu.pc/cpu.sp`), 23 lines
+- `/tmp/rop_proto2.now` — SETUP/σ prototype, 27 lines
+- `/tmp/rop_e2e.now` — **decisive typed pipeline**, 372 lines
+
+---
+
+## Run A — `/tmp/rop_green2.now` (harness chain)
+
+```
+ROP: P1 pc=2B1E sp=8C80 kicked, csr=0
+ROP: @4D20 KEYSCAN RT ER0=0001 (r0=01 r1=00) Right held -> expect != 0x0000 when key seen; 0x0001 = no key
+FRAME: P1+2 row0: C89AC11E237F0000C89AC11E
+FRAME: P1+100 row0: FFFFFFFFFFFFFFFFFFFFFFFF
+FRAME: P1+2000 row0: 000000000000000000000000
+ROP: P1 done pc=4B96 sp=8C18
+ROP: P2 pc=75C0 sp=8DDC restored
+P3: '=' long-held markers, diff=102, chg 8154-81B7 A5A4A7A6...
+```
+
+- Chain kick executed: `pc=2B1E sp=8C80` → gadgets → memcpy12 → LCD copy visible at
+  `P1+100` (`FFFFFFFFFFFFFFFFFFFFFFFF` = 12×0xFF written) → KEYSCAN @4D20 → park tree,
+  ending `P1 done pc=4B96 sp=8C18`, then `P2` restored firmware (`pc=75C0 sp=8DDC`).
+- **KEYSCAN key read VERIFIED with a key held**: `ER0=0001 (r0=01 r1=00) Right held`.
+  Combined with the Session 15 verified run (`ER0=0000`, no key held), the semantics are
+  **ER0 ≠ 0 ⇔ key seen**; ER0 = 0 ⇔ no key.
+- LCD copy is **transient**: at `P1+2000` the row reads `0000...` — the app's refresh
+  erased it within the frame (consistent with Session 19/20's store-capture findings).
+- **Script bug (fix `rop_green2.lua`'s print, do not repeat as fact):** the trailing
+  annotation `; 0x0001 = no key` is **stale and wrong** — it contradicts the same line's
+  prefix `expect != 0x0000 when key seen` and was presumably copied from an earlier
+  misread. Here Right was held and `ER0=0001` = key seen.
+
+## Run B — `/tmp/rop_proto2.now` (SETUP/σ prototype)
+
+```
+SETUP: after SHIFTb / after MODE / after LineIO-2  (row2 stays 0000… then C000…)
+SIGMA: tail8=0021BA21BA21BA21B9 → len=8
+SIGMA: tail8=10044840E380380404E00038E… → boxed
+SIGMA: boxed → retrying SETUP
+MISMATCH Sigma-test len=8 tail=69B821BA21BA21B9
+INPUT: payload swapped post-AC, len=100 buf=0E4D11110E4D1111…
+WATCH: t=90001..390001 pc=4B96 sp=8D4E/8DCC tiles>0x8240=0 hits=0
+PROTO: NO-TRIGGER hits=0 er0= pc=4B96 sp=8D4E
+```
+
+- This script **does not type the formula** and therefore says **nothing** about the
+  overflow trigger. `NO-TRIGGER` here only means "the payload was never tiled/executed"
+  because the pipeline never armed.
+- SETUP remains **OPEN**: the SHIFT+MODE chord still opens the **mode menu**, not SETUP —
+  the Σ test inserts the MathIO boxed Σ-template (`len=8`,
+  `MISMATCH Sigma-test … tail=69B821BA21BA21B9`).
+- Payload-swap mechanics confirmed working: `payload swapped post-AC, len=100`.
+
+## Run C — `/tmp/rop_e2e.now` (decisive typed pipeline)
+
+```
+PROBE1: before=2 after=2 NOT-INSERTED(good)   <- SUCCESS: input locked = the strcpy overflow is triggered
+INPUT: typing done len=2 buf=323100BA21BA21B9000000…
+INPUT: payload 0E4D-flood in, len=100
+CHAIN: KEYSCAN #1  ER0=0000 pc=4D20 sp=8DA0 lr=2B1E  words[sp-8..+7]=4D0E 4D0E 4D0E 4D0E 3538 3538 F801 35BE
+CHAIN: KEYSCAN #2#3…#20 sp climbs +4/hop (8DB0…8DF8)
+CHAIN: KEYSCAN #21 sp=8DFC  words[sp-8..+7]=4D0E 4D0E 4D0E 4D0E 4D0E 4D0E 000E 0000
+CHAIN: KEYSCAN #22 sp=8E00  words[sp-8..+7]=4D0E 4D0E 4D0E 4D0E 000E 0000 0000 0000
+WATCH: t=160001  tiles=1350 hits=22 rows=…|380000…|440000…|440000…|040000…
+WATCH: t=260001  tiles=1349 hits=22 pc=8DF2 sp=0004
+WATCH: t=360001… pc=31F4/3242/31DE… sp=FFF0/0000/FFF4/FFFC (post-chain chaos)
+PROTO: NO-TRIGGER hits=22 pc=8DF2 sp=0004
+PROTO: final-buf 0E4D0E4D… len=100
+```
+
+Interpretation:
+
+1. **Typed keys land (T=1 window)**: `PROBE1: before=2 after=2 NOT-INSERTED(good)` — the
+   PROBE-1 keystroke was accepted and then **not inserted**, i.e. the input buffer is in
+   the locked/overflowed state. This **reproduces the typed overflow (Sessions 14/15)**.
+2. **Token state**: `typing done len=2 buf=323100BA21BA21B9…` — only 2 token bytes (`32`,
+   `31`) survived in the buffer; the formula's tokens did not fully land this run (the
+   remaining bytes are residue of the Σ-boxed template `21 BA 21 BA 21 B9`). The
+   reproducible part is **the overflow state + chain execution**, not the exact formula.
+3. **Payload tiling VERIFIED**: Lua swapped in a 100-byte `0E 4D` flood
+   (`payload 0E4D-flood in, len=100`); the strcpy tiled it across RAM: **1349–1350
+   `tiles`** counted at 0x8240–0x8DF8 (`tiles=1350` at t=160001, `tiles=1349` after;
+   final buffer `0E4D0E4D… len=100`).
+4. **ROP from the tiled stack VERIFIED**: 22 KEYSCAN hops @0x4D20 with `lr=2B1E`,
+   sp marching **+4 bytes per hop** from `8DA0` through `8DFC` to `8E00` (tile end /
+   RAM boundary). Hop #1→#2 jumped +0x10 through the tile-head words
+   (`3538 3538 F801 35BE` visible in #1's window), then straight 0x4D0E marches.
+5. **Post-chain (superseded by `rop_park1.lua`, 2026-11-21)**: at the 0x8E00 boundary the
+   planned tail is exhausted — execution degrades to chaos (`pc` wandering 0x31xx–0x33xx
+   with `sp=FFF0/0000/FFF4/FFFC`, occasional `pc=8DF2/8DFC` reentries; `rows` show partial
+   row 2–5 footprints `380000…/440000…/440000…/040000…` of the 0x3538 march). **Park was
+   not reached in this baseline run** — with the park word 0x4EF2 doubled at payload
+   offsets 36–39, `rop_park1` parks cleanly (see the Park note below).
+6. **Label bug**: `PROTO: NO-TRIGGER hits=22 …` — the finish threshold was
+   `scan_hits >= 50 => "TRIGGERED"`, else `"NO-TRIGGER"`. With `hits=22` the chain
+   **did** execute 22 hops; the label is threshold-relative, not a negative result.
+
+Sessions 16–30's negative draw evidence (surviving nuance; **"draw = negative" is
+superseded by the rop_draw3 section above**): the 0x3538/0x35BE store-march
+from the typed chain never reached a persistent LCD cell — the app refreshes every row
+each frame (Run A `P1+2000` erase is the same effect on the harness path); single-cell
+draws via one store were erased within a frame in all Session 19/20 instrumented runs.
+Persisting a draw needs the app's own draw-buffer state or a re-draw loop. (draw3's
+12-byte memcpy row 0 does persist across hops until the park; in the emulator it is then
+erased by the parked app's refresh — on hardware, via the frozen app, by inference.)
+
+### Park (2026-11-21, `rop_park1.lua`) — VERIFIED, and reinterpretated: key-gated resume spin (input sweep negative — rop_resume2: not input-reachable in-emulator, treat as terminal park)
+
+`rop_e2e.lua` + one extra payload line: park word `0x4EF2` doubled at payload offsets
+36–39 (`F2 4E F2 4E`; hop #20 @`sp=8DF8` consumes offsets 36/38 per the tile rule
+`offset = (sp − 0x8D70) mod 100`). 20 CHAIN hops (entries #21/#22 — the run-off-RAM hops —
+never execute), then PC=`0x4EF2` → the **key-gated resume spin** (`PUSH LR; MOV R0,#1;
+BL 0x8508; CMP R0,#230; BC NE,0x4EF4; POP PC` — see the Movement section below; the
+settled `pc=4B96` is the spin inside 0x8508 — a key-gated resume by ROM semantics, but
+**input-unreachable in-emulator (rop_resume2 sweep: AC derails, no key delivers 230) —
+treat as a terminal park in-emulator):**
+
+```
+CHAIN: KEYSCAN #20 ER0=0000 pc=4D20 sp=8DF8 lr=2B1E words[sp-8..sp+7]=4D0E 4D0E 4D0E 4D0E 4EF2 4EF2 4D0E 4D0E
+WATCH: t=160001 pc=4B96 sp=8D7A tiles=1207 hits=20 rows=001000000000002000004000|000000000000000000000000|3B0000000000000000000000|470000000000000000000000|470000000000000000000000|070000000000000000000000
+```
+
+All 59 WATCH samples (t=160001→5960001) are identical (`pc=4B96 sp=8D7A` bit-stable,
+zero 0x31xx–0x33xx wandering). Final buffer carries the park bytes verbatim:
+
+```
+PROTO: final-buf 0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4D0E4DF24EF24E0E4D0E4D0E4D0E4D len=100
+```
+
+(Offsets 36–39 = `F2 4E F2 4E`, resuming `0E 4D` at 40; head word `38 35 38 35 01 F8 BE 35 54 81`
+unchanged at 48–57.) Full write-up: `research/findings/rop-park.md`; raw:
+`/tmp/rop_park1.out`.
+
+### Draw (2026-11-21, `rop_draw3.lua`) — VERIFIED
+
+`rop_draw3.lua` = `rop_draw2.lua` + two payload words only (`W(56,0x35BE)`, `W(60,0x8154)`);
+park at 36–39 untouched. This routes the walk through a POP-PC into the memcpy at `0x35BE`
+(csr = popped next-word & 0xF = 0xE):
+
+```
+MBE-HIT[E:35BE] sp=8DAC ER2=F801 EA=F040 r0=01 lr=2B1E src=8154 src12[8154]=0E4D0E4D0E4D0E4D0E4D0E4D
+CHAIN: KEYSCAN #2#3…#17  lcd01=0E4D0E4D0E4D0E4D0E4D0000...
+```
+
+- After the copy, **every hop's `lcd01` = the payload's first 12 bytes on LCD row 0**
+  (dst ER2=0xF801 → 0xF801..0xF80C, r0=1 → single 12-byte copy), persistent across all
+  subsequent hops in a fresh readback (`/tmp/rop_draw3.out`, 343 lines).
+- Walk shift +14 through the head (`CHAIN #2 sp 0x8DB0→0x8DBE` in draw1/draw2 → here
+  #1 `sp=8DA0` → #2 `sp=8DBE`), **17 hops total**, and **park still fires**:
+  59 WATCH samples stable at `pc=4B96 sp=8D7C` (`tiles=1194`, `hits=17`).
+- **Caveat:** no chain-context `0x35CC` store-capture printed (print cap burned by app
+  frames); the proof = the memcpy **entry state** above + the persistent `lcd01` readback.
+- Persistence in the emulator ends there: after the park the parked app's refresh erases
+  LCD; hardware persistence = inference via the frozen app.
+- **Correction 1 (supersedes Session 17/18):** `0x3538 = POP ER2; POP ER8; MOV ER0,ER2; RT`
+  — **NOT `POP ER2; POP LR`** (see the corrected Address/gadget table row). It never loads
+  LR, so RT returns to the planted LR (0x2B1E) and the walk continues; the memcpy must be
+  entered via a POP-PC (what draw3 does).
+- **Correction 2 (probe-hygiene):** `break_at` is **bank-blind** — it matches
+  `real_pc=(csr<<16)|(pc&~1)`; POP-PC also pops `csr = next-word & 0xF`. Future probes must
+  arm `((csr<<16)|addr)`. Also: instruction fetch is ROM-only (`MMU::ReadCode`), so a popped
+  PC pointing at RAM (e.g. 0x8154) executes the ROM at that offset, never the RAM content.
+  Full write-up: `research/findings/rop-draw.md`.
+
+## Status matrix (2026-11-21)
+
+| Capability | Status | Evidence |
+|---|---|---|
+| Harness chain: kick → gadgets → park | **VERIFIED** | Run A: `pc=2B1E sp=8C80` kick → `P1 done pc=4B96 sp=8C18`, `P2 restored pc=75C0` |
+| LCD copy from harness (memcpy12) | **VERIFIED (transient)** | Run A: `P1+100 row0: FFFFFFFFFFFFFFFFFFFFFFFF` shown, erased by `P1+2000` refresh |
+| KEYSCAN key read | **VERIFIED** | Run A: `ER0=0001 … Right held`; Session 15: `ER0=0000` no key ⇒ ER0 ≠ 0 ⇔ key seen |
+| Typed key delivery (T=1 window) | **VERIFIED** | Run C: keys land, `PROBE1 before=2 after=2`; Run B (`/tmp/rop_proto2.now`): `typing done len=8 buf=69B821BA21BA21B9` fully typed |
+| Overflow state via typed keys (PROBE1 NOT-INSERTED) | **VERIFIED** | Run C: `PROBE1: before=2 after=2 NOT-INSERTED(good)` |
+| Payload tiling (strcpy × RAM) | **VERIFIED** | Run C: `len=100`, `tiles=1350→1349`, `final-buf 0E4D… len=100` |
+| ROP hops from the typed/tiled stack | **VERIFIED (22 hops)** | Run C: `CHAIN: KEYSCAN #1…#22 sp=8DA0→8E00, lr=2B1E`, +4/hop |
+| Park from the typed chain (0x4EF2 tail) | **VERIFIED (2026-11-21, `rop_park1.lua`) — = key-gated resume spin, not terminal** | Park word 0x4EF2 doubled at payload offsets 36–39 (`F2 4E F2 4E`): 20 CHAIN hops (hop #20 @`sp=8DF8` consumes offsets 36/38 → PC=0x4EF2), then settled pc=`4B96` sp=`8D7A` bit-stable across all 59 WATCH samples (t=160001–5960001, `tiles=1207`); post-chain chaos gone. `pc=4B96` = the key-gated-resume spin inside 0x8508. Details: `research/findings/rop-park.md` (`/tmp/rop_park1.out`) |
+| Re-entry loop (walk restarts itself) | **VERIFIED (2026-11-21, `rop_loop1.lua`)** | `rop-loop.md`: the walk restarts itself per pass; stable geometry (11-beat cycle) |
+| Per-pass key branch (0x4CDC → F80B.4) | **VERIFIED (2026-11-21, `rop_br1.lua`)** | `rop-workload.md`: state bit branches the pass; r0 = per-pass input |
+| Per-pass fixed-dst render (memcpy12) | **VERIFIED (2026-11-21, `rop-workload.md`)** | memcpy12 at constant dst/src every pass |
+| Movement (key-dependent draw address) | **NEGATIVE (2026-11-21, `rop_move1.lua`)** | {ER2 fresh ∧ r0 fresh ∧ ER2 persistent} unsatisfiable; the only bank-0 register adder 0x2ED8 is wrapped around `BL 0x327E` and hijacks the walk (`MBE-HIT … lr=337E ER2=8182`, final `pc=8F4A sp=4CF0`); no standalone `MOV Rn,R0` carry gadget; the memcpy exit pops clobber r4–r15 (see the Movement section) |
+| Park word 0x4EF2 semantics | **KEY-GATED RESUME in the ROM, but NOT input-reachable in the emulator** | ROM: `PUSH LR; MOV R0,#1; BL 0x8508; CMP R0,#230 (0xE6); BC NE,0x4EF4; POP PC` (rop-move.md). Tested NEGATIVE (`rop_resume2.lua`, `research/findings/rop-resume2.md`): 104-code sweep 0x00–0x67 after the park (`SWEEP: parked t=1632048 pc=4B96 sp=8D7A hits=20`) — every non-AC key leaves r0=2/pc=4B96/hits=20 unchanged; AC (0x42) yields translated code 18, leaves the 0x8508 spin (`SWEEP: done 42 -> pc=CAF6 sp=4CCA hits=21`) and **derails the walk** (no sustained hits, pc wanders, sp outside RAM); raw `PressKey(0xE6)` no effect. ⇒ 230 = internal app/system event, not a keyboard key; **treat 0x4EF2 as a terminal park in-emulator**; **[HW-unknown]** on hardware whether the 230 event is reachable |
+| Draw from typed chain | **VERIFIED (2026-11-21, `rop_draw3.lua`)** | `MBE-HIT[E:35BE] sp=8DAC ER2=F801 EA=F040 r0=01 lr=2B1E src=8154 src12[8154]=0E4D0E4D0E4D0E4D0E4D0E4D`; every later hop `lcd01=0E4D0E4D0E4D0E4D0E4D0000...` = the payload's 12 bytes on LCD row 0 (0xF801..0xF80C); walk shift +14, 17 hops, park still fires (`pc=4B96 sp=8D7C`, `tiles=1194`, `hits=17`). Caveat: no chain-context 0x35CC store-capture printed (print cap burned by app frames); proof = memcpy entry state + persistent `lcd01` readback. Emulator persistence ends at the park (parked app's refresh erases); hardware persistence = inference via the frozen app |
+| Full-screen render (chain → window 0x87D0..0x894F → app refresh 0x35AE) | **VERIFIED (harness, original 4dcb0b1c binary)** | window planted 384/384 exact; `35BE[APP] ER2=F800 r0=20` = the refresh's memcpy entry; FULL LCD = the planted pattern, persisted >1M ticks with the app alive; the real refresh source is the window 0x87D0..0x894F (0x8950/0x8007 were stale-EA artifacts); the DSR/banked-window hypothesis is falsified for this path; LCD row 0 = the firmware icon strip (designed art = rows 1-31) — `research/findings/rop-render-buffer.md` |
+| Full-screen animation | **VERIFIED (harness-driven; 12 distinct frames, 8 fps GIF)** | fix: `unbreak_at` before each kick, `emu:run()` after the kick (the parked chain sits in RM_HALT; park signature `pc==4B96 && sp==8C18`), ER2=0xF800 clamp per kick; 12 md5-distinct frames `/tmp/render_anim4.log`; artifacts `demo/render_anim.gif`, `demo/render_anim_contact.png`, `demo/anim/frame01..12.ppm` (research/CasioEmuX/demo/) |
+| Game / movement via the render buffer | **NOT DEMONSTRATED** | typed-payload ceiling: 4 designed LCD rows per 100-byte tile (22 B/row); animation on hardware = per-frame re-trigger (auto-typer / flash-walk, slow) or a self-sustaining walk pending the ER2 clamp; movement/state still blocked (movement NEGATIVE; 0x4EF2 input-unreachable) |
+| SETUP/LineIO via SHIFT+MODE chord | **OPEN** | Run B + Run C renders: chord opens the mode menu, not SETUP (`MISMATCH Sigma-test … boxed`) — fix in progress (emulator keyboard worker) |
+| Snake-lite | **BLOCKED** | movement NEGATIVE; 0x4EF2 resume not input-reachable (AC derails); verified ceiling = free-running loop + per-pass key branch + fixed-dst render (rop-workload.md); playable Snake = emulator Lua only |
+
+Supersedes any earlier "all negative" summary. The stale `0x0001 = no key` print in
+`rop_green2.lua` and the threshold-label `NO-TRIGGER` at `hits=22` in `rop_e2e.lua` are
+script bugs to fix, not findings.
+
+## Movement (2026-11-21, `rop_move1.lua`) — NEGATIVE
+
+Goal: a draw address that moves with the per-pass key (`ER2 += ER0`). Result: **no usable
+gadget — the walk is hijacked**. Full write-up: `research/findings/rop-move.md`; raw:
+`/tmp/rop_move1.out` (383 lines).
+
+**The blocker** — the constraint `{ER2 fresh per pass ∧ r0 (key) fresh per pass ∧ ER2
+persistent across passes}` is **unsatisfiable** with the current bank-0 inventory:
+
+- The only bank-0 register adder reachable by the walk is **`0x2ED8` (`ADD ER2,ER0`)**, but
+  it is wrapped around a `BL 0x327E` (draw/glyph) call: placing it in the tile hijacks the
+  walk into that callee — measured: `MBE-HIT[E:35BE] sp=8DD6 ER2=8182 EA=88D7 r0=01
+  lr=337E src=8154` (×5, the callee's internal memcpy with `lr=337E`), and the run ends
+  `PROTO: NO-TRIGGER hits=8 pc=8F4A sp=4CF0 ER14=4CF6` (deep in the callee tree, sp outside
+  RAM) instead of continuing the walk.
+- No standalone `MOV Rn,R0` carry gadget exists in bank 0 (the constant-address movers
+  0x2D9E/0x2DE0/0x2E1E all use `#imm`).
+- The memcpy's exit pops (`POP ER0 / POP QR8 / POP XR4`) clobber r0–r15 (XR4 = r4–r7,
+  QR8 = r8–r15), so any accumulator in those registers does not survive the per-pass render.
+
+**Discovery (a) — `0x4EF2` is a KEY-GATED RESUME, not a pure park** (corrects every earlier
+"clean park" statement above):
+
+```
+0x4EF2: CE F8        PUSH LR
+0x4EF4: 01 00        MOV R0,#1
+0x4EF6: 01 F0 08 85  BL 0x8508        ; wait/scan routine (the spin at pc=4B96 = the observed "park")
+0x4EFA: E6 70        CMP R0,#230      ; 230 = 0xE6 = the awaited key code
+0x4EFC: FB C8        BC NE,0x4EF4     ; loop until the key arrives
+0x4EFE: 8E F2        POP PC           ; resume the walk from the stack
+```
+
+The observed park (`pc=4B96 sp=8D7A/8D7C`) is the spin inside 0x8508. Not invoked: no claim
+of which physical key delivers 0xE6 (never measured). As a primitive it makes the
+continuation, not the address, key-dependent — **but the input sweep (`rop_resume2`) proved
+it NOT input-reachable in-emulator** (no key 0x00–0x67 delivers 230; AC exits via the quit
+path and derails the walk; raw 0xE6 no effect) — treat 0x4EF2 as a terminal park
+in-emulator; **[HW-unknown]** on hardware.
+
+**Discovery (b) — `0x3540`** = a guarded `ER14 += ER0` pattern (`PUSH ER14; ER14 ← 0x7824;
+ER14 += ER0; BC GE,0x356A (POP ER14; RT)…`): the adder + bounds-check shape exists but is
+inline in a function; a cleaner cut may exist in bank 1.
+
+Status matrix rows updated accordingly: re-entry loop VERIFIED, per-pass key branch
+VERIFIED, per-pass fixed-dst render VERIFIED, movement **NEGATIVE**, park =
+key-gated resume, **not input-reachable in-emulator (rop_resume2) — terminal park
+in-emulator**.
+
+## Session 20 — security swarm verdict (2026-11-22)
+
+Four agents audited the CY-845 attack surface. Reports: `research/findings/sec-sfr-pc.md`,
+`sec-firmware-copies.md`, `sec-hardware-debug.md`, `sec-emulator-audit.md`.
+
+- **PC/CSR from data: YES, ROP-only** — `POP PC` (0x2B1E), `POP LR`+`RT`, register-indirect
+  `B ERn` (ROM 0x5690), control-reg loads from ERn; CSR always clamped to banks 0/1
+  (`csr_mask=0x0001`). (sec-sfr-pc.md rows 1-3)
+- **Fetch outside ROM: NO** — every control path (fetch, RT/RTI, POP PC, vectors, reset)
+  ends in `MMU::ReadCode`, masked to the 128 KB mask image (`MMU.cpp:179-186`); no RAM
+  vector table, no PC-controlling SFR, Flash peripheral never constructed for HW_ES_PLUS
+  (`Chipset.cpp:309-311`). True code execution on CY-845 = gadget chains inside mask ROM
+  only, never new code from RAM. (sec-sfr-pc.md rows 4-14, verdict)
+- **Firmware copy census: no NEW PC-control path** — only the known `strlen(0x8154)>=100`
+  strcpy tiler (0x6B62 via 0x2B10) reaches the firmware stack; strcat 0xCB5E is unbounded
+  but every key-reachable site appends ROM-fixed/bounded sources into firmware-chosen
+  targets; memmove 0x5108 callers carry the 250-cap. (sec-firmware-copies.md §4, §6)
+- **Hardware debug surface: CLOSED** — EASE/debug block deleted from the production core
+  (OKI TR 203), no TEST/Vpp/EASE pin bonded on ML610904, mask ROM not writable, no SFR
+  reads/writes PC; an opened device offers only passive probing of battery/test pads.
+  Keyboard-only ROP remains the sole external control path. (sec-hardware-debug.md)
+- **Emulator host audit (host-side only, not device-reachable)**: 1 critical — KeyLog heap
+  OOB write + exfil, run-confirmed (100200-byte log from a 100000-byte alloc,
+  `Keyboard.cpp:217` vs `:520-521,577`); 4 high — full Lua stdlib exposed to keyscripts
+  (`os.execute` = host exec by design), dangling `lua_tostring` filename pointers (UAF),
+  unlocked script/inject threads racing the tick thread, `_disas.txt` parser stack smash
+  (171 B into `char[40]`) + infinite loop; 3 medium, 3 low. For hostile ROMs on ES-PLUS
+  the core holds; flash-controller and `_disas.txt` bugs hit other models only.
+  (sec-emulator-audit.md)
+
+Conclusion: the typed-hackstring ROP chain (Sessions 14-15, `rop_e2e.lua`: 1499 tiles,
+25-step chain from the tiled stack) is both the ceiling and the only path — no debug port,
+no flash write, no RAM fetch, no second stack-reaching copy. Consistent with all prior
+sessions.
+
+## Session 21 — 2-D game proven + final content-ceiling verdicts (2026-11-22)
+
+**GAME PROVEN (typed trigger → ROP → playable 2-D cell game).** `real01_game2d.lua` /
+`real01_game2d.md`: each pass the chain polls KEYSCAN itself (r2=KID), loads a persistent
+POS byte from RAM 0x8BBD (`L R0,[ER0]` 0x16E0C bank1), computes POS' = POS−KID
+(`SUB R0,R2` 0x4AA8), stores it back (`ST R0,[ER14]` 0x10470C bank1), renders a 12-byte cell
+at dst = 0xF8|POS' via memcpy12 0x35BE. 48 passes, deterministic (evidence md5
+`db3152b3d43a719bb93de2aff177b975`), payload 100 B zero-free md5 `a53b3894e57984fa67b89f8ab7b075f0`.
+Controls: hold Right/Up → +0x81, Left/Down → +0x41, none → +1 (drift); one held arrow is
+the whole player input. 1-D predecessor: `game_snake.md`. `real02_framegen.md` (FrameGen):
+the chain also writes COMPUTED bytes directly to the LCD SFR (0x3854 `ST [EA+]` ×3/pass =
+12 B/pass), and pivot 0x75DE re-syncs SP every pass → unbounded passes, arbitrary frames
+over time.
+
+**Content ceiling — final verdicts (MB01–MB10, all measured):**
+- Pure typing caps at 99 B (0x655A `CMP R1,#99`; TypedCap: template inserts rejected whole
+  when strlen+len>99 → strlen≥100 unreachable by typing alone; needs the HW flash-walk /
+  autotyper, HW-verified in docs/hardware-procedure.md §5).
+- Flood period is geometrically fixed at 100 (stamp dst=src+100; MB07/MB09) → ≤100 distinct
+  typed bytes; +6 BCD-only bytes survive below 0x8154 (MB02); 0 extra from SFR/DSR/DSR-alias/
+  history-src/post-trigger keys (MB03/MB06/MB08 — keys post-trigger = KID channel only).
+- The chain breaks the ceiling twice: computed stores to RAM/LCD (MB05, typed-trigger
+  proven: 6 computed bytes at 0x8511–0x8516) and a second plant at 0x8154 from the chain
+  (MB10: ~202 distinct controlled positions). Content is UNBOUNDED over time; RAM itself
+  stays finite (3244 B + 384 B LCD).
+
+**Hardware runbook:** `hardware-keypresses.md` + `keygen.py`. Game payload runbook
+generated: `research/CasioEmuX/game2d_payload_{runbook.md,schedule.lua,summary.txt}` —
+392 presses total (41-key entry recipe + AC,◀,DEL + 346 payload presses + EXE trigger);
+0x0E/0x4D have no key chord → delivered by the hack-#7 flash-walk (6 and 2 presses).
+
+**Emulator caveat (unchanged):** the pre-trigger payload equip at 0x8154 is the documented
+stand-in for the hardware autotyper delivery; the trigger and all player input are pure
+`Keyboard:PressKey`.

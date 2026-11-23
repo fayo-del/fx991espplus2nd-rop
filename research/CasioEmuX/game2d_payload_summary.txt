@@ -1,0 +1,185 @@
+# keygen summary
+payload md5 a53b3894e57984fa67b89f8ab7b075f0 len 100
+payload keypresses: 346
+full runbook presses (recipe+AC,◀,DEL+payload+trigger): 392
+
+## per-offset encoding
+offset  0: byte 92 NO direct chord → hack-#7 walk from seed 8B, 8 presses (incl. seed), flash-wait + arrows
+offset  1: byte 42 direct chord (fn 0x14 with ALPHA), 2 press(es), table-only
+offset  2: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset  3: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset  4: byte CA NO direct chord → hack-#7 walk from seed D0, 7 presses (incl. seed), flash-wait + arrows
+offset  5: byte 39 direct chord (9), 1 press(es), measured
+offset  6: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset  7: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset  8: byte BE direct chord (× with SHIFT), 2 press(es), measured
+offset  9: byte 35 direct chord (5), 1 press(es), measured
+offset 10: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 11: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 12: byte 40 NO direct chord → hack-#7 walk from seed 41, 3 presses (incl. seed), flash-wait + arrows
+offset 13: byte 82 direct chord (×10ˣ with SHIFT), 2 press(es), measured
+offset 14: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 15: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 16: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 17: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 18: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 19: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 20: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 21: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 22: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 23: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 24: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 25: byte 30 direct chord (0), 1 press(es), table-only
+offset 26: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 27: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 28: byte AC NO direct chord → hack-#7 walk from seed B0, 6 presses (incl. seed), flash-wait + arrows
+offset 29: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 30: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 31: byte 30 direct chord (0), 1 press(es), table-only
+offset 32: byte AC NO direct chord → hack-#7 walk from seed B0, 6 presses (incl. seed), flash-wait + arrows
+offset 33: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 34: byte A8 NO direct chord → hack-#7 walk from seed A3, 6 presses (incl. seed), flash-wait + arrows
+offset 35: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 36: byte DE direct chord (fn 0x16 (F6) with SHIFT), 2 press(es), table-only
+offset 37: byte 75 NO direct chord → hack-#7 walk from seed 74, 2 presses (incl. seed), flash-wait + arrows
+offset 38: byte DE direct chord (fn 0x16 (F6) with SHIFT), 2 press(es), table-only
+offset 39: byte 75 NO direct chord → hack-#7 walk from seed 74, 2 presses (incl. seed), flash-wait + arrows
+offset 40: byte F2 NO direct chord → hack-#7 walk from seed F0, 3 presses (incl. seed), flash-wait + arrows
+offset 41: byte 4E direct chord (×), 1 press(es), measured
+offset 42: byte DE direct chord (fn 0x16 (F6) with SHIFT), 2 press(es), table-only
+offset 43: byte 75 NO direct chord → hack-#7 walk from seed 74, 2 presses (incl. seed), flash-wait + arrows
+offset 44: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 45: byte 30 direct chord (0), 1 press(es), table-only
+offset 46: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 47: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 48: byte AC NO direct chord → hack-#7 walk from seed B0, 6 presses (incl. seed), flash-wait + arrows
+offset 49: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 50: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 51: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 52: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 53: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 54: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 55: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 56: byte A8 NO direct chord → hack-#7 walk from seed A3, 6 presses (incl. seed), flash-wait + arrows
+offset 57: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 58: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 59: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 60: byte 8E NO direct chord → hack-#7 walk from seed 8B, 4 presses (incl. seed), flash-wait + arrows
+offset 61: byte F2 NO direct chord → hack-#7 walk from seed F0, 3 presses (incl. seed), flash-wait + arrows
+offset 62: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 63: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 64: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 65: byte 10 NO direct chord → hack-#7 walk from seed 09, 8 presses (incl. seed), flash-wait + arrows
+offset 66: byte DC direct chord (fn 0x24 with SHIFT), 2 press(es), table-only
+offset 67: byte 4C NO direct chord → hack-#7 walk from seed 4E, 3 presses (incl. seed), flash-wait + arrows
+offset 68: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 69: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 70: byte 22 NO direct chord → hack-#7 walk from seed 20, 4 presses (incl. seed), flash-wait + arrows
+offset 71: byte 37 direct chord (7), 1 press(es), measured
+offset 72: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 73: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 74: byte BD NO direct chord → hack-#7 walk from seed BE, 3 presses (incl. seed), flash-wait + arrows
+offset 75: byte 8B direct chord (Ans), 1 press(es), measured
+offset 76: byte 0C NO direct chord → hack-#7 walk from seed 09, 4 presses (incl. seed), flash-wait + arrows
+offset 77: byte 6E NO direct chord → hack-#7 walk from seed 6F, 2 presses (incl. seed), flash-wait + arrows
+offset 78: byte 01 direct chord (1 with SHIFT), 2 press(es), table-only
+offset 79: byte 01 direct chord (1 with SHIFT), 2 press(es), table-only
+offset 80: byte A8 NO direct chord → hack-#7 walk from seed A3, 6 presses (incl. seed), flash-wait + arrows
+offset 81: byte 4A NO direct chord → hack-#7 walk from seed 4E, 5 presses (incl. seed), flash-wait + arrows
+offset 82: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 83: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 84: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 85: byte 30 direct chord (0), 1 press(es), table-only
+offset 86: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 87: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 88: byte BD NO direct chord → hack-#7 walk from seed BE, 3 presses (incl. seed), flash-wait + arrows
+offset 89: byte 8B direct chord (Ans), 1 press(es), measured
+offset 90: byte 0C NO direct chord → hack-#7 walk from seed 09, 4 presses (incl. seed), flash-wait + arrows
+offset 91: byte 47 NO direct chord → hack-#7 walk from seed 46, 3 presses (incl. seed), flash-wait + arrows
+offset 92: byte 01 direct chord (1 with SHIFT), 2 press(es), table-only
+offset 93: byte 01 direct chord (1 with SHIFT), 2 press(es), table-only
+offset 94: byte C2 direct chord (. with ALPHA), 2 press(es), measured
+offset 95: byte 49 NO direct chord → hack-#7 walk from seed 46, 5 presses (incl. seed), flash-wait + arrows
+offset 96: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 97: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 98: byte 0C NO direct chord → hack-#7 walk from seed 09, 4 presses (incl. seed), flash-wait + arrows
+offset 99: byte F8 direct chord (fn 0x13), 1 press(es), table-only
+
+## walk-only bytes (hack #7 needed on hardware)
+offset  0: byte 92 NO direct chord → hack-#7 walk from seed 8B, 8 presses (incl. seed), flash-wait + arrows
+offset  2: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset  3: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset  4: byte CA NO direct chord → hack-#7 walk from seed D0, 7 presses (incl. seed), flash-wait + arrows
+offset  6: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset  7: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 10: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 11: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 12: byte 40 NO direct chord → hack-#7 walk from seed 41, 3 presses (incl. seed), flash-wait + arrows
+offset 14: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 15: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 16: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 17: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 18: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 19: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 20: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 21: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 22: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 23: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 24: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 26: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 27: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 28: byte AC NO direct chord → hack-#7 walk from seed B0, 6 presses (incl. seed), flash-wait + arrows
+offset 29: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 30: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 32: byte AC NO direct chord → hack-#7 walk from seed B0, 6 presses (incl. seed), flash-wait + arrows
+offset 33: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 34: byte A8 NO direct chord → hack-#7 walk from seed A3, 6 presses (incl. seed), flash-wait + arrows
+offset 35: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 37: byte 75 NO direct chord → hack-#7 walk from seed 74, 2 presses (incl. seed), flash-wait + arrows
+offset 39: byte 75 NO direct chord → hack-#7 walk from seed 74, 2 presses (incl. seed), flash-wait + arrows
+offset 40: byte F2 NO direct chord → hack-#7 walk from seed F0, 3 presses (incl. seed), flash-wait + arrows
+offset 43: byte 75 NO direct chord → hack-#7 walk from seed 74, 2 presses (incl. seed), flash-wait + arrows
+offset 44: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 46: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 47: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 48: byte AC NO direct chord → hack-#7 walk from seed B0, 6 presses (incl. seed), flash-wait + arrows
+offset 49: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 50: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 51: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 52: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 53: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 54: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 55: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 56: byte A8 NO direct chord → hack-#7 walk from seed A3, 6 presses (incl. seed), flash-wait + arrows
+offset 57: byte 8D NO direct chord → hack-#7 walk from seed 8B, 3 presses (incl. seed), flash-wait + arrows
+offset 58: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 59: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 60: byte 8E NO direct chord → hack-#7 walk from seed 8B, 4 presses (incl. seed), flash-wait + arrows
+offset 61: byte F2 NO direct chord → hack-#7 walk from seed F0, 3 presses (incl. seed), flash-wait + arrows
+offset 62: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 63: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 64: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 65: byte 10 NO direct chord → hack-#7 walk from seed 09, 8 presses (incl. seed), flash-wait + arrows
+offset 67: byte 4C NO direct chord → hack-#7 walk from seed 4E, 3 presses (incl. seed), flash-wait + arrows
+offset 68: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 69: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 70: byte 22 NO direct chord → hack-#7 walk from seed 20, 4 presses (incl. seed), flash-wait + arrows
+offset 72: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 73: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 74: byte BD NO direct chord → hack-#7 walk from seed BE, 3 presses (incl. seed), flash-wait + arrows
+offset 76: byte 0C NO direct chord → hack-#7 walk from seed 09, 4 presses (incl. seed), flash-wait + arrows
+offset 77: byte 6E NO direct chord → hack-#7 walk from seed 6F, 2 presses (incl. seed), flash-wait + arrows
+offset 80: byte A8 NO direct chord → hack-#7 walk from seed A3, 6 presses (incl. seed), flash-wait + arrows
+offset 81: byte 4A NO direct chord → hack-#7 walk from seed 4E, 5 presses (incl. seed), flash-wait + arrows
+offset 82: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 83: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 84: byte 66 NO direct chord → hack-#7 walk from seed 68, 3 presses (incl. seed), flash-wait + arrows
+offset 86: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 87: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 88: byte BD NO direct chord → hack-#7 walk from seed BE, 3 presses (incl. seed), flash-wait + arrows
+offset 90: byte 0C NO direct chord → hack-#7 walk from seed 09, 4 presses (incl. seed), flash-wait + arrows
+offset 91: byte 47 NO direct chord → hack-#7 walk from seed 46, 3 presses (incl. seed), flash-wait + arrows
+offset 95: byte 49 NO direct chord → hack-#7 walk from seed 46, 5 presses (incl. seed), flash-wait + arrows
+offset 96: byte 0E NO direct chord → hack-#7 walk from seed 09, 6 presses (incl. seed), flash-wait + arrows
+offset 97: byte 4D NO direct chord → hack-#7 walk from seed 4E, 2 presses (incl. seed), flash-wait + arrows
+offset 98: byte 0C NO direct chord → hack-#7 walk from seed 09, 4 presses (incl. seed), flash-wait + arrows
