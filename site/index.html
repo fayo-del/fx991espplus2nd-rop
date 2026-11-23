@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CY-845 — saisie guidée du payload (jeu ROP)</title>
+<style>
+  :root { --bg:#0f1420; --fg:#e8ecf4; --muted:#9aa4b8; --card:#1a2233; --accent:#5ab0ff;
+          --ok:#4ade80; --warn:#fbbf24; --line:#2a3550; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  header { padding:20px 24px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0 0 4px; font-size:22px; }
+  header p { margin:0; color:var(--muted); max-width:70ch; }
+  main { max-width:960px; margin:0 auto; padding:20px 24px 60px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:18px 0; }
+  h2 { margin-top:0; font-size:18px; }
+  ol.steps li { margin:6px 0; }
+  code { background:#0b0f1a; padding:1px 6px; border-radius:6px; font-size:14px; }
+  .bar { height:10px; background:#0b0f1a; border-radius:6px; overflow:hidden; margin:10px 0; }
+  .bar > div { height:100%; background:var(--accent); width:0%; transition:width .2s; }
+  #card { text-align:center; padding:26px 16px; background:#0b0f1a; border:1px solid var(--line); border-radius:12px; }
+  #card .big { font-size:44px; font-weight:700; margin:8px 0; }
+  #card .sub { color:var(--muted); font-size:15px; min-height:22px; }
+  #card .wait { color:var(--warn); }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:12px 0; }
+  button { background:var(--accent); color:#06121f; border:0; border-radius:8px; padding:9px 16px;
+           font-weight:600; font-size:15px; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button:disabled { opacity:.4; cursor:default; }
+  select, input[type=number] { background:#0b0f1a; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  label { color:var(--muted); font-size:14px; }
+  table { border-collapse:collapse; width:100%; font-size:13.5px; }
+  th, td { border-bottom:1px solid var(--line); padding:4px 8px; text-align:left; }
+  th { color:var(--muted); position:sticky; top:0; background:var(--card); }
+  tr.done td { color:var(--ok); }
+  tr.cur td { background:#20304f; }
+  .wrap { max-height:420px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+  .note { color:var(--muted); font-size:14px; }
+  .warn { color:var(--warn); }
+  kbd { background:#0b0f1a; border:1px solid var(--line); border-radius:6px; padding:1px 7px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎮 CY-845 — saisie guidée du payload (fx-991ES PLUS 2nd ed)</h1>
+  <p>Petit site autonome pour rentrer le hackstring du jeu <b>à la main</b>, étape par étape,
+     en lecture automatique à la vitesse choisie. Aucun matériel requis.
+     Payload md5 <code id="md5"></code> · 100 octets · <span id="counts"></span>.</p>
+</header>
+<main>
+
+<section>
+  <h2>0. Préparation — l'« overflow de base » (une fois)</h2>
+  <ol class="steps">
+    <li>Reset propre : <kbd>SHIFT</kbd> <kbd>9</kbd> <kbd>3</kbd> <kbd>=</kbd> (Reset All → Yes), puis <kbd>AC</kbd>.</li>
+    <li>Entrer la formule longue : <kbd>ALPHA</kbd> <kbd>]</kbd>(X) <kbd>ALPHA</kbd> <kbd>CALC</kbd>(=) <kbd>SHIFT</kbd> <kbd>log/Σ</kbd>(Σ() <kbd>ALPHA</kbd> <kbd>]</kbd>(X) <kbd>SHIFT</kbd> <kbd>)</kbd>(,) <kbd>1</kbd> <kbd>SHIFT</kbd> <kbd>)</kbd>(,) <kbd>1</kbd> <kbd>×10ˣ</kbd> <kbd>9</kbd> → <kbd>EXE</kbd>. Écran : <code>X=Σ(X,1,1×10⁹</code></li>
+    <li>Re-entrer la formule courte <code>X=Σ(X,1,1</code> (effacer la queue <code>×10⁹</code> avec <kbd>DEL</kbd>×3, ou retaper).</li>
+    <li><kbd>CALC</kbd> puis <kbd>EXE</kbd> → <b>Syntax ERROR</b> → appuyer sur <kbd>▶</kbd>.</li>
+    <li>Vérifier : appuyer sur <kbd>1</kbd> — le « 1 » ne doit <b>pas</b> apparaître → curseur découplé = overflow OK.
+        Sinon recommencer à l'étape 2. (Détail : <code>fx991espplus2nd-rop/docs/hardware-procedure.md</code> §1.)</li>
+  </ol>
+  <p class="note">Alternative équivalente (recette vérifiée en émulateur, 41 touches) : lancez la lecture auto ci-dessous —
+  la section « base » rejoue cette recette automatiquement.</p>
+</section>
+
+<section>
+  <h2>1. Saisie du payload — lecture automatique</h2>
+  <p class="note">Choisissez la vitesse, puis <b>Lecture</b> : la carte défile toute seule.
+  Cochez « fait ✓ » (ou avancez) après chaque action. Progression sauvegardée dans ce navigateur.</p>
+  <div class="controls">
+    <button id="play">▶ Lecture</button>
+    <button id="prev" class="ghost">◀ Préc.</button>
+    <button id="next" class="ghost">Suiv. ▶</button>
+    <label>Vitesse
+      <select id="speed">
+        <option value="3500">lent (3,5 s/touche)</option>
+        <option value="1600" selected>normal (1,6 s/touche)</option>
+        <option value="700">rapide (0,7 s/touche)</option>
+      </select>
+    </label>
+    <label>Aller à l'étape <input type="number" id="goto" min="0" value="0" style="width:70px"></label>
+    <button id="go" class="ghost">OK</button>
+    <button id="reset" class="ghost">Tout décocher</button>
+  </div>
+  <div class="bar"><div id="bar"></div></div>
+  <div id="progress" class="note">étape 0 / 0</div>
+  <div id="card">
+    <div class="sub" id="cardPhase">—</div>
+    <div class="big" id="cardBig">prêt</div>
+    <div class="sub" id="cardSub">Appuyez sur « ▶ Lecture » pour défiler les caractères à saisir.</div>
+  </div>
+  <p class="note">⚠ <b>Attente flash</b> (carte orange) : taper la touche « seed », puis <b>attendre 2–3 clignotements
+  du curseur (~1,5–3 s), ne rien toucher</b>, puis appuyer sur la flèche le nombre de fois indiqué.
+  Si une pression est « mangée », retapez le seed et attendez à nouveau. <kbd>ON</kbd> réinitialise tout, sans danger.</p>
+</section>
+
+<section>
+  <h2>2. Déclenchement et jeu</h2>
+  <ol class="steps">
+    <li>Après le dernier octet : <kbd>AC</kbd> <kbd>◀</kbd> <kbd>EXE</kbd> (les 2 dernières étapes de la lecture).</li>
+    <li>Écran attendu : gel / glyphes bizarres = le flood + la chaîne ROP tournent. ✅</li>
+    <li><b>Jouer : maintenir une flèche</b> (<kbd>▶</kbd>/<kbd>↑</kbd> ou <kbd>◀</kbd>/<kbd>↓</kbd>) — la cellule bouge à chaque passe ; aucune touche = dérive. Game over → écran final.</li>
+    <li>Quitter : <kbd>ON</kbd>.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>3. Table complète (référence)</h2>
+  <div class="wrap"><table id="tbl">
+    <thead><tr><th>#</th><th>phase</th><th>action</th><th>octet</th><th>détail</th><th>fait</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>4. Notes</h2>
+  <p class="note">Payload : 100 octets zéro-free, md5 <code id="md5b"></code>. Données générées par
+  <code>research/CasioEmuX/gen_site.py</code> depuis <code>keygen.py</code> (ne pas éditer <code>payload.js</code>).
+  Preuves & procédure détaillée : <code>research/findings/hand-runbook.md</code>,
+  <code>research/findings/real03-complete.md</code>, <code>research/findings/hardware-keypresses.md</code>,
+  <code>fx991espplus2nd-rop/docs/hardware-procedure.md</code>.</p>
+</section>
+
+</main>
+<script src="payload.js"></script>
+<script>
+(function () {
+  const D = window.SITE_DATA;
+  document.getElementById("md5").textContent = D.PAYLOAD_MD5;
+  document.getElementById("md5b").textContent = D.PAYLOAD_MD5;
+  document.getElementById("counts").textContent =
+    D.STEPS.length + " étapes payload (" + D.PRESSES_PAYLOAD + " frappes, " +
+    D.STEPS.filter(s => s.walk).length + " flèches de walk, " +
+    D.STEPS.filter(s => s.kind === "wait").length + " attentes flash)";
+
+  // Combined sequence: recipe (base) + AC,◀,DEL + payload steps + trigger
+  const MID = [
+    {kind:"key", code:0x42, name:"AC/ON", phase:"base", note:"AC (après la recette)"},
+    {kind:"key", code:0x26, name:"◀ (Left)", phase:"base", note:"◀ (efface le résidu)"},
+    {kind:"key", code:0x32, name:"DEL", phase:"base", note:"DEL (aligne le payload à l'offset 0)"},
+  ];
+  const seq = [];
+  D.RECIPE.forEach(r => seq.push({kind:"key", code:r.code, name:r.name, phase:"base", note:"recette de base (vérifiée)"}));
+  MID.forEach(m => seq.push(m));
+  D.STEPS.forEach(s => seq.push(Object.assign({phase:"payload"}, s)));
+  D.TRIGGER.forEach(t => seq.push({kind:"key", code:t.code, name:t.name, phase:"trigger", note:"DÉCLENCHEUR"}));
+
+  // byte index per step (payload steps carry "byte")
+  let b = -1;
+  seq.forEach(s => { if (s.phase === "payload" && s.byte !== undefined) b++; s.byteIdx = b; });
+
+  const LS = "cy845-payload-v1";
+  let done = {};
+  try { done = JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { done = {}; }
+  const save = () => localStorage.setItem(LS, JSON.stringify(done));
+
+  let cur = 0, playing = false, timer = null;
+  const $ = id => document.getElementById(id);
+  const tbody = document.querySelector("#tbl tbody");
+
+  function stepText(s, i) {
+    if (s.kind === "wait") return {big: "⏳ ATTENTE", sub: "attendre 2–3 clignotements du curseur (~2 s), ne rien toucher — " + (s.note || ""), cls: "wait"};
+    let big = s.name || ("0x" + (s.code || 0).toString(16));
+    if (s.mod) big = (s.mod === 0x07 ? "SHIFT+" : "ALPHA+") + big;
+    if (s.walk) big = (s.code === 0x37 ? "▶" : "◀");
+    let sub = (s.phase === "payload" && s.byteIdx >= 0 ? "octet " + (s.byteIdx + 1) + "/100 → " : "") + (s.note || "");
+    return {big, sub, cls: s.phase === "trigger" ? "warn" : (s.phase === "base" ? "" : "wait")};
+  }
+
+  function render() {
+    const s = seq[cur];
+    const t = stepText(s, cur);
+    $("cardPhase").textContent = {base:"ÉTAPE DE BASE", payload:"PAYLOAD", trigger:"DÉCLENCHEUR"}[s.phase] + " — étape " + (cur + 1) + "/" + seq.length;
+    const el = $("cardBig"); el.textContent = t.big; el.className = "big " + (t.cls || "");
+    $("cardSub").textContent = t.sub;
+    $("progress").textContent = "étape " + (cur + 1) + " / " + seq.length +
+      (s.byteIdx >= 0 ? " · octet " + (s.byteIdx + 1) + "/100" : "") +
+      " · fait: " + Object.keys(done).length + "/" + seq.length;
+    $("bar").style.width = (100 * Object.keys(done).length / seq.length) + "%";
+    [...tbody.children].forEach((tr, i) => {
+      tr.className = (done[i] ? "done" : "") + (i === cur ? " cur" : "");
+    });
+    const cur2 = tbody.children[cur];
+    if (cur2) cur2.scrollIntoView({block: "nearest"});
+  }
+
+  function buildTable() {
+    seq.forEach((s, i) => {
+      const tr = document.createElement("tr");
+      const t = stepText(s, i);
+      tr.innerHTML = "<td>" + (i + 1) + "</td><td>" + s.phase + "</td><td><b>" + t.big.replace(/</g, "&lt;") + "</b></td><td>" +
+        (s.byte !== undefined ? "0x" + s.byte.toString(16).toUpperCase().padStart(2, "0") + " (#" + s.byteIdx + ")" : "") +
+        "</td><td>" + (t.sub.replace(/</g, "&lt;")) + "</td><td>☐</td>";
+      tr.children[5].style.cursor = "pointer";
+      tr.children[5].onclick = () => { done[i] = !done[i]; if (!done[i]) delete done[i]; save(); render(); };
+      tbody.appendChild(tr);
+    });
+  }
+
+  function dur(s) {
+    if (s.kind === "wait") return 2200;                 // flash-wait, wall clock
+    return parseInt($("speed").value, 10);               // per key press
+  }
+  function tick() {
+    if (!playing) return;
+    done[cur] = true; save();
+    if (cur < seq.length - 1) { cur++; render(); timer = setTimeout(tick, dur(seq[cur - 1])); }
+    else { playing = false; $("play").textContent = "▶ Rejouer"; render(); }
+  }
+  $("play").onclick = () => {
+    playing = !playing;
+    $("play").textContent = playing ? "⏸ Pause" : "▶ Lecture";
+    if (playing) { render(); timer = setTimeout(tick, dur(seq[cur])); }
+    else clearTimeout(timer);
+  };
+  $("next").onclick = () => { playing = false; clearTimeout(timer); $("play").textContent = "▶ Lecture"; if (cur < seq.length - 1) cur++; render(); };
+  $("prev").onclick = () => { playing = false; clearTimeout(timer); $("play").textContent = "▶ Lecture"; if (cur > 0) cur--; render(); };
+  $("go").onclick = () => { const v = Math.max(0, Math.min(seq.length - 1, parseInt($("goto").value, 10) || 0)); cur = v; render(); };
+  $("reset").onclick = () => { done = {}; save(); render(); };
+
+  buildTable();
+  render();
+})();
+</script>
+</body>
+</html>
