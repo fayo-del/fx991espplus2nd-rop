@@ -329,3 +329,9 @@ zero-free so no erase bytes exist (the trail persists); no in-chain score/compar
 the emulator the chain ends in a park loop. Evidence and full logs:
 `research/findings/cy845-rop.md` (Sessions 14–21), `game-snake.md`, `game-loop.md`,
 `game-gadgets.md`, `more-bytes-*.md`, `sec-*.md` under `research/findings/`.
+
+**Final version (2026-11-23):** the complete game loop (steer + drift + game-over park,
+145 passes proven, `real03_complete.lua`) is delivered with a **hand-only runbook** —
+no autotyper, no extra hardware: `research/findings/hand-runbook.md` (354 keypresses,
+key-by-key table in `research/CasioEmuX/real03_hand_runbook.md`). Play = hold an arrow
+after the trigger.
